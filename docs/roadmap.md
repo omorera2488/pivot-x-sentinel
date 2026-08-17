@@ -64,9 +64,9 @@ Especificación formal: [docs/spec-estrategia.md](spec-estrategia.md). Código P
 
 ---
 
-## Fase 3 — Backtest de Oro con costos reales ⏳ EN REVISIÓN
+## Fase 3 — Backtest de Oro con costos reales ⏳ SPEC APROBADA, PENDIENTE DE EJECUTAR
 
-Especificación: [docs/spec-backtest.md](spec-backtest.md).
+Especificación: [docs/spec-backtest.md](spec-backtest.md) — aprobada como borrador de diseño. Falta implementar el motor (usuario / Claude Code local) y correr el barrido real; la fase no se da por completa hasta confirmar el criterio de aceptación (expectancy positiva después de costos, sostenida en los 3 sub-períodos). Volver a esta sesión con los resultados antes de pasar a la Fase 4.
 
 **Objetivo:** validar si existe una ventaja (edge) real en Oro después de costos, antes de escribir una sola línea del bot en vivo.
 
@@ -146,7 +146,7 @@ Especificación: [docs/spec-backtest.md](spec-backtest.md).
 | 0 — Fundamentos | ✅ Completada |
 | 1 — Repositorio y esqueleto | ✅ Completada |
 | 2 — Especificación funcional | ✅ Completada |
-| 3 — Backtest de Oro | ⏳ En revisión (borrador listo) |
+| 3 — Backtest de Oro | ⏳ Spec aprobada, falta implementar y correr |
 | 4 — Ejecución en vivo | ⏳ Pendiente |
 | 5 — API local | ⏳ Pendiente |
 | 6 — Panel web | ⏳ Pendiente |
