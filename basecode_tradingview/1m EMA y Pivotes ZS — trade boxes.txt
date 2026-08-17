@@ -1,0 +1,405 @@
+//@version=6
+// =============================================================================
+// 1m EMA y Pivotes ZS — replica + TRADE BOXES        (Pine Script v6)
+//
+// EVERY arrow gets a box, whether or not the limit order ever fills.
+//
+//     entry  = the EMA value at the arrow bar (a resting LIMIT order)
+//     stop   = just beyond the Resistencia / Soporte line, frozen at the arrow
+//     target = R:R multiple of the risk, measured from the entry
+//     fill   = price retests the entry within `Barras validez`
+//
+//   Box styling tells you the whole story at a glance:
+//     dashed grey border, very faint  -> NOT FILLED, there was no trade
+//     solid border, normal fill       -> filled, still open
+//     bright green border on the top  -> filled, target hit
+//     bright red border on the bottom -> filled, stop hit
+//     orange !                        -> discarded, stop on the wrong side
+//
+// THE STOP NEVER REPAINTS. It is always taken from the running extreme at the
+// arrow bar - the level as it stood when the signal fired - and then frozen.
+// A stop read from the bucket's FINAL high/low is a price that had not occurred
+// yet, and would drift as the bucket develops.
+//
+// `Niveles causales` therefore controls only the PLOTTED lines and the arming:
+//   off = the original's behaviour, lines repaint (request.security lookahead)
+//   on  = non-repainting running extremes, lines never move afterwards
+// With it off the red line on screen can sit far above a trade's stop. That
+// gap is the look-ahead, drawn to scale.
+//
+// Separate file. pine/zs_advanced_scalping.pine and pine/zs_strategy_v4.pine
+// (BASELINE_V1.1) are unchanged.
+// =============================================================================
+
+indicator("1m EMA y Pivotes ZS — trade boxes", overlay = true,
+          max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+// ---- inputs ----------------------------------------------------------------
+emaPeriods    = input.int(15,    "Ema Periods", minval = 1)
+periodos      = input.int(100,   "Periodos", minval = 1, group = "PIVOTES")
+usarCausal    = input.bool(false, "Niveles causales (sin repintado)", group = "PIVOTES")
+
+rr            = input.float(1.0, "Riesgo:Beneficio (1 en 1m, 7 en 5m)",
+                            minval = 0.1, step = 0.1, group = "TRADE")
+bufBp         = input.float(0.4, "Buffer del stop (bp mas alla de la linea)",
+                            minval = 0.0, step = 0.1, group = "TRADE")
+validBars     = input.int(10,     "Barras validez de la orden limite",
+                            minval = 1, group = "TRADE")
+entradaViva   = input.bool(false, "Entrada en la EMA ACTUAL (se mueve) en vez de la de la flecha",
+                            group = "TRADE")
+// DEFAULT ON. A fixed bar count is arbitrary; the order should die when the
+// setup dies. The stop is anchored to the Resistencia/Soporte line, so the
+// order rests until price reaches that stop level (premise falsified) or the
+// maxBarsTrade cap is hit. With this on, 'Barras validez' is ignored.
+ordenViva     = input.bool(true, "Orden viva hasta invalidarse (ignora 'Barras validez')",
+                            group = "TRADE")
+maxBarsTrade  = input.int(500,   "Maximo de barras por operacion",
+                            minval = 10, group = "TRADE")
+verNoFill     = input.bool(true, "Mostrar cajas de setups no ejecutados",
+                            group = "TRADE")
+barrasMarca   = input.int(8,     "Ancho de la caja no ejecutada (barras)",
+                            minval = 1, group = "TRADE")
+mostrarTabla  = input.bool(true, "Mostrar tabla de resultados", group = "TRADE")
+// Master switch for the risk/reward boxes. With it off no box objects are
+// created at all (not merely hidden), which also frees the 500-box budget on
+// busy charts. The trade accounting is unaffected: the counters live in the
+// arrays, not in the drawings.
+mostrarCajas  = input.bool(true, "Mostrar cajas de riesgo/beneficio", group = "TRADE")
+
+htf     = str.tostring(periodos)
+emaLine = ta.ema(close, emaPeriods)
+
+// ---- levels ----------------------------------------------------------------
+repHigh = request.security(syminfo.tickerid, htf, high, lookahead = barmerge.lookahead_on)
+repLow  = request.security(syminfo.tickerid, htf, low,  lookahead = barmerge.lookahead_on)
+
+nuevoBucket = ta.change(time(htf)) != 0
+var float runHigh = na
+var float runLow  = na
+if nuevoBucket or na(runHigh)
+    runHigh := high
+    runLow  := low
+else
+    runHigh := math.max(runHigh, high)
+    runLow  := math.min(runLow, low)
+
+resistencia = usarCausal ? runHigh : repHigh
+soporte     = usarCausal ? runLow  : repLow
+
+// ---- arrows (identical rule to BASELINE_V1.1 / CAUSAL_V1) -------------------
+var bool armadoVenta  = false
+var bool armadoCompra = false
+
+cruceAbajo  = ta.crossunder(close, emaLine)
+cruceArriba = ta.crossover(close, emaLine)
+
+senalVenta  = armadoVenta and cruceAbajo
+senalCompra = armadoCompra and cruceArriba
+
+if senalVenta
+    armadoVenta := false
+if senalCompra
+    armadoCompra := false
+if high >= resistencia
+    armadoVenta := true
+if low <= soporte
+    armadoCompra := true
+
+// ---- state -----------------------------------------------------------------
+var pDir   = array.new<int>()
+var pEntry = array.new<float>()
+var pSL    = array.new<float>()
+var pTP    = array.new<float>()
+var pBar   = array.new<int>()
+var pRisk  = array.new<box>()
+var pRew   = array.new<box>()
+
+var oDir   = array.new<int>()
+var oSL    = array.new<float>()
+var oTP    = array.new<float>()
+var oBar   = array.new<int>()
+var oRisk  = array.new<box>()
+var oRew   = array.new<box>()
+
+var int nSig  = 0
+var int nFill = 0
+var int nWin  = 0
+var int nLoss = 0
+var int nNone = 0
+var int nSkip = 0
+var int nOpen = 0
+var int nTpMiss = 0
+
+buf = bufBp / 10000.0
+
+// pending / unfilled: barely-there fill, dashed grey border
+cPendRisk = color.new(color.red, 93)
+cPendRew  = color.new(color.green, 93)
+cPendBord = color.new(color.gray, 55)
+// filled: readable
+cLiveRisk = color.new(color.red, 82)
+cLiveRew  = color.new(color.green, 82)
+
+// --- 1. resolve OPEN trades --------------------------------------------------
+k = array.size(oDir) - 1
+while k >= 0
+    d  = array.get(oDir, k)
+    sl = array.get(oSL, k)
+    tp = array.get(oTP, k)
+    ob = array.get(oBar, k)
+    bR = array.get(oRisk, k)
+    bW = array.get(oRew, k)
+    hitSL = d < 0 ? high >= sl : low <= sl
+    hitTP = d < 0 ? low <= tp : high >= tp
+    tooLong = bar_index - ob >= maxBarsTrade
+    if not na(bR)
+        box.set_right(bR, bar_index)
+        box.set_right(bW, bar_index)
+    // a bar touching both is counted as the STOP, the conservative reading
+    if hitSL or hitTP or tooLong
+        if hitSL
+            nLoss += 1
+            if not na(bR)
+                box.set_border_color(bR, color.red)
+                box.set_border_width(bR, 2)
+        else if hitTP
+            nWin += 1
+            if not na(bW)
+                box.set_border_color(bW, color.green)
+                box.set_border_width(bW, 2)
+        else
+            nOpen += 1
+            if not na(bR)
+                box.set_border_color(bR, color.gray)
+        array.remove(oDir, k)
+        array.remove(oSL, k)
+        array.remove(oTP, k)
+        array.remove(oBar, k)
+        array.remove(oRisk, k)
+        array.remove(oRew, k)
+    k -= 1
+
+// --- 2. try to FILL pending orders ------------------------------------------
+k := array.size(pDir) - 1
+while k >= 0
+    d     = array.get(pDir, k)
+    entry = array.get(pEntry, k)
+    sl    = array.get(pSL, k)
+    tp    = array.get(pTP, k)
+    born  = array.get(pBar, k)
+    bR    = array.get(pRisk, k)
+    bW    = array.get(pRew, k)
+    // With `entradaViva` the limit sits on the CURRENT EMA, which descends
+    // toward price for a short and rises toward it for a long, so it fills far
+    // more often. With it off the entry is frozen at the arrow bar's EMA and
+    // price must come back to that fixed level.
+    entryUse = entradaViva ? emaLine : entry
+    tpUse = tp
+    touched = d < 0 ? high >= entryUse : low <= entryUse
+    // Two ways an unfilled order can die:
+    //   fixed window  - it only lives `validBars` bars (validBars=1 means the
+    //                   single bar after the arrow, so a retest two bars later
+    //                   is missed entirely)
+    //   until invalid - it rests until price reaches the STOP level, at which
+    //                   point the setup is dead, capped by maxBarsTrade so a
+    //                   trending market cannot leave it pending forever
+    // Kept on one line on purpose: Pine reads a continuation indented by a
+    // multiple of 4 as a new block, so splitting a ternary before the ':'
+    // raises "end of line without line continuation".
+    muerto  = d < 0 ? high >= sl : low <= sl
+    caduca  = bar_index - born >= (ordenViva ? maxBarsTrade : validBars)
+    // If price reaches the TARGET before the limit ever fills, the move
+    // happened without us and the setup is dead - there is nothing left to
+    // capture. `touched` is evaluated first below, so a bar that reaches both
+    // the entry and the target still counts as a fill; only a target reached
+    // with no fill kills the order.
+    tpAntes = d < 0 ? low <= tp : high >= tp
+    expired = tpAntes or (ordenViva ? (muerto or caduca) : caduca)
+
+    if touched
+        nFill += 1
+        if entradaViva
+            rNow = math.abs(sl - entryUse)
+            tpUse := d < 0 ? entryUse - rr * rNow : entryUse + rr * rNow
+            if not na(bR)
+                box.set_top(bR, d < 0 ? sl : entryUse)
+                box.set_bottom(bR, d < 0 ? entryUse : sl)
+                box.set_top(bW, d < 0 ? entryUse : tpUse)
+                box.set_bottom(bW, d < 0 ? tpUse : entryUse)
+        // promote the box from "setup" styling to "live trade" styling
+        if not na(bR)
+            box.set_bgcolor(bR, cLiveRisk)
+            box.set_bgcolor(bW, cLiveRew)
+            box.set_border_style(bR, line.style_solid)
+            box.set_border_style(bW, line.style_solid)
+            box.set_border_color(bR, color.new(color.red, 55))
+            box.set_border_color(bW, color.new(color.green, 55))
+            box.set_right(bR, bar_index)
+            box.set_right(bW, bar_index)
+        fSL = d < 0 ? high >= sl : low <= sl
+        fTP = d < 0 ? low <= tpUse : high >= tpUse
+        if fSL or fTP
+            if fSL
+                nLoss += 1
+                if not na(bR)
+                    box.set_border_color(bR, color.red)
+                    box.set_border_width(bR, 2)
+            else
+                nWin += 1
+                if not na(bW)
+                    box.set_border_color(bW, color.green)
+                    box.set_border_width(bW, 2)
+        else
+            array.push(oDir, d)
+            array.push(oSL, sl)
+            array.push(oTP, tpUse)
+            array.push(oBar, bar_index)
+            array.push(oRisk, bR)
+            array.push(oRew, bW)
+        array.remove(pDir, k)
+        array.remove(pEntry, k)
+        array.remove(pSL, k)
+        array.remove(pTP, k)
+        array.remove(pBar, k)
+        array.remove(pRisk, k)
+        array.remove(pRew, k)
+    else if expired
+        nNone += 1
+        if tpAntes
+            nTpMiss += 1
+        // Widen the box to a legible size and leave it dashed: this is a setup
+        // that never became a trade. All unfilled setups now share the same
+        // neutral "x" tag: the old green "TP" tag rewarded phantom wins that
+        // only existed at prices never offered (measured 2026-08-09).
+        // A setup that was never entered ends where it died: at the bar price
+        // reached the TP level, or after `barrasMarca` bars otherwise. With
+        // `ordenViva` an order can rest for hundreds of bars, and drawing the
+        // pale box across all of them buries the chart.
+        rightEdge = tpAntes ? bar_index : born + barrasMarca
+        if not na(bR)
+            box.set_right(bR, rightEdge)
+            box.set_right(bW, rightEdge)
+        if not verNoFill
+            box.delete(bR)
+            box.delete(bW)
+        else if mostrarCajas
+            // Unopened setups keep the pale dashed styling and a neutral tag
+            // in every case — no visual reward for targets reached without a
+            // fill (see note above).
+            txtNo = "x"
+            lbNo = label.new(rightEdge, entry, txtNo, style = label.style_none,
+                             textcolor = color.new(color.gray, 10), size = size.tiny)
+        array.remove(pDir, k)
+        array.remove(pEntry, k)
+        array.remove(pSL, k)
+        array.remove(pTP, k)
+        array.remove(pBar, k)
+        array.remove(pRisk, k)
+        array.remove(pRew, k)
+    else
+        // still waiting to fill: cap the pale box so a long-lived order does
+        // not draw a box stretching across the whole screen
+        borde = math.min(bar_index, born + barrasMarca)
+        if not na(bR)
+            box.set_right(bR, borde)
+            box.set_right(bW, borde)
+    k -= 1
+
+// --- 3. queue NEW order from this bar's arrow --------------------------------
+// Inlined rather than a function: a Pine function cannot reassign the global
+// counters. crossunder and crossover cannot both be true on one bar, so at most
+// one direction fires here.
+if senalVenta or senalCompra
+    nSig += 1
+    dNew  = senalVenta ? -1 : 1
+    eNew  = emaLine
+    // The STOP ALWAYS uses the running extreme, i.e. the level exactly as it
+    // stood when the arrow fired, never `resistencia`/`soporte` which may be
+    // the repainting request.security value. A stop taken from the bucket's
+    // FINAL high is a price that had not happened yet: it produces enormous
+    // risk boxes that drift upward as the bucket develops, and a stop you could
+    // never have placed. `Niveles causales` still controls the plotted lines
+    // and the arming, so the arrows can match the original's display while the
+    // trade itself stays honest.
+    sNew  = dNew < 0 ? runHigh * (1 + buf) : runLow * (1 - buf)
+    okNew = dNew < 0 ? sNew > eNew : sNew < eNew
+    if okNew
+        rNew = math.abs(sNew - eNew)
+        tNew = dNew < 0 ? eNew - rr * rNew : eNew + rr * rNew
+        topR = dNew < 0 ? sNew : eNew
+        botR = dNew < 0 ? eNew : sNew
+        topW = dNew < 0 ? eNew : tNew
+        botW = dNew < 0 ? tNew : eNew
+        // The box is created on the ARROW bar, so every signal is visible
+        // immediately. It is restyled if and when the limit fills. With
+        // `mostrarCajas` off no box object is created and na is stored
+        // instead; every box call downstream is guarded by `not na(...)`.
+        box bRn = na
+        box bWn = na
+        if mostrarCajas
+            bRn := box.new(bar_index, topR, bar_index, botR,
+                           border_color = cPendBord, border_style = line.style_dashed,
+                           bgcolor = cPendRisk)
+            bWn := box.new(bar_index, topW, bar_index, botW,
+                           border_color = cPendBord, border_style = line.style_dashed,
+                           bgcolor = cPendRew)
+        array.push(pDir, dNew)
+        array.push(pEntry, eNew)
+        array.push(pSL, sNew)
+        array.push(pTP, tNew)
+        array.push(pBar, bar_index)
+        array.push(pRisk, bRn)
+        array.push(pRew, bWn)
+    else
+        nSkip += 1
+        lbSkip = label.new(bar_index, eNew, "!", style = label.style_none,
+                           textcolor = color.new(color.orange, 10), size = size.tiny)
+
+// ---- plots ------------------------------------------------------------------
+resPlot = nuevoBucket ? na : resistencia
+supPlot = nuevoBucket ? na : soporte
+plot(resPlot, "Resistencia", color = color.red, linewidth = 2, style = plot.style_linebr)
+plot(supPlot, "Soporte", color = color.yellow, linewidth = 2, style = plot.style_linebr)
+plot(emaLine, "Ema", color = color.white, linewidth = 2, style = plot.style_circles)
+
+plotshape(senalVenta ? resistencia : na, "Venta", style = shape.labeldown,
+          location = location.absolute, color = color.new(color.red, 0), size = size.tiny)
+plotshape(senalCompra ? soporte : na, "Compra", style = shape.labelup,
+          location = location.absolute, color = color.new(color.yellow, 0), size = size.tiny)
+
+// ---- results table ----------------------------------------------------------
+if mostrarTabla and barstate.islast
+    var table t = table.new(position.top_right, 2, 9, border_width = 1, frame_width = 1)
+    resolved = nWin + nLoss
+    wr = resolved > 0 ? nWin / resolved * 100 : 0.0
+    be = 100.0 / (1.0 + rr)
+    fillPct = nSig > 0 ? nFill / nSig * 100 : 0.0
+    table.cell(t, 0, 0, "Trade boxes", text_color = color.white,
+               bgcolor = color.new(color.blue, 40))
+    table.cell(t, 1, 0, usarCausal ? "CAUSAL" : "REPINTA", text_color = color.white,
+               bgcolor = usarCausal ? color.new(color.green, 30) : color.new(color.red, 30))
+    table.cell(t, 0, 1, "Flechas", text_color = color.white)
+    table.cell(t, 1, 1, str.tostring(nSig), text_color = color.white)
+    table.cell(t, 0, 2, "Ejecutadas", text_color = color.white)
+    table.cell(t, 1, 2, str.tostring(nFill) + "  (" + str.tostring(fillPct, "#.#") + "%)",
+               text_color = color.white)
+    table.cell(t, 0, 3, "Sin ejecutar", text_color = color.white)
+    table.cell(t, 1, 3, str.tostring(nNone), text_color = color.white)
+    // "de esas, TP sin entrar" removed on purpose (2026-08-09): the entry-
+    // deviation lab measured those unfilled targets as phantom accounting —
+    // wins that only existed at prices never offered (~0.10R of adverse
+    // selection, vs 0.3-0.5R of costs at every easier entry). Displaying
+    // them in green invited chasing more fills. The counter still exists
+    // internally (nTpMiss); it just no longer advertises.
+    table.cell(t, 0, 4, "Descartadas (!)", text_color = color.white)
+    table.cell(t, 1, 4, str.tostring(nSkip),
+               text_color = nSkip > 0 ? color.orange : color.gray)
+    table.cell(t, 0, 5, "TP / SL", text_color = color.white)
+    table.cell(t, 1, 5, str.tostring(nWin) + " / " + str.tostring(nLoss),
+               text_color = color.white)
+    table.cell(t, 0, 6, "Sin resolver", text_color = color.white)
+    table.cell(t, 1, 6, str.tostring(nOpen), text_color = color.gray)
+    table.cell(t, 0, 7, "Aciertos %", text_color = color.white)
+    table.cell(t, 1, 7, str.tostring(wr, "#.##") + "%",
+               text_color = wr >= be ? color.green : color.red)
+    table.cell(t, 0, 8, "Necesario (sin costes)", text_color = color.white)
+    table.cell(t, 1, 8, str.tostring(be, "#.##") + "%", text_color = color.gray)

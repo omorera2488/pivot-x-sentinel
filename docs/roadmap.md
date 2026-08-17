@@ -44,7 +44,9 @@ Repo: https://github.com/omorera2488/pivot-x-sentinel
 
 ---
 
-## Fase 2 — Especificación funcional de la estrategia
+## Fase 2 — Especificación funcional de la estrategia ⏳ EN REVISIÓN
+
+Especificación formal: [docs/spec-estrategia.md](spec-estrategia.md). Código Pine de referencia en [/basecode_tradingview](../basecode_tradingview).
 
 **Objetivo:** convertir la lógica ya analizada del Pine Script en una especificación formal y corregida, independiente de lenguaje, que cualquier implementación deba seguir exactamente.
 
@@ -141,7 +143,7 @@ Repo: https://github.com/omorera2488/pivot-x-sentinel
 |---|---|
 | 0 — Fundamentos | ✅ Completada |
 | 1 — Repositorio y esqueleto | ✅ Completada |
-| 2 — Especificación funcional | ⏳ Pendiente |
+| 2 — Especificación funcional | ⏳ En revisión (borrador listo) |
 | 3 — Backtest de Oro | ⏳ Pendiente |
 | 4 — Ejecución en vivo | ⏳ Pendiente |
 | 5 — API local | ⏳ Pendiente |
