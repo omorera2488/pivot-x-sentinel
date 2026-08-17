@@ -44,7 +44,7 @@ Repo: https://github.com/omorera2488/pivot-x-sentinel
 
 ---
 
-## Fase 2 — Especificación funcional de la estrategia ⏳ EN REVISIÓN
+## Fase 2 — Especificación funcional de la estrategia ✅ COMPLETADA
 
 Especificación formal: [docs/spec-estrategia.md](spec-estrategia.md). Código Pine de referencia en [/basecode_tradingview](../basecode_tradingview).
 
@@ -143,7 +143,7 @@ Especificación formal: [docs/spec-estrategia.md](spec-estrategia.md). Código P
 |---|---|
 | 0 — Fundamentos | ✅ Completada |
 | 1 — Repositorio y esqueleto | ✅ Completada |
-| 2 — Especificación funcional | ⏳ En revisión (borrador listo) |
+| 2 — Especificación funcional | ✅ Completada |
 | 3 — Backtest de Oro | ⏳ Pendiente |
 | 4 — Ejecución en vivo | ⏳ Pendiente |
 | 5 — API local | ⏳ Pendiente |

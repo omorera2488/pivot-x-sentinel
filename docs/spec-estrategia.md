@@ -65,7 +65,7 @@ si high[i] >= resistencia: armadoVenta := true
 si low[i]  <= soporte:     armadoCompra := true
 ```
 
-En el primer bar de cada bloque nuevo, `resistencia` se acaba de fijar en `high[i]` — la comparación `high[i] >= resistencia` es entonces `high[i] >= high[i]`, siempre verdadera. Lo mismo para `soporte`/`low[i]`. **Resultado: cada bloque nuevo arma `armadoVenta` y `armadoCompra` simultáneamente en su primer bar, sin relación con ningún nivel real** — es ruido, no señal.
+El problema no se limita a la primera barra del bloque: `runHigh := max(runHigh, high[i])` (y su equivalente para `runLow`) se recalcula en **cualquier barra** que haga un nuevo máximo o mínimo dentro del bloque en formación, no solo en la barra de apertura. Cada vez que eso ocurre, `resistencia`/`soporte` se actualiza al `high[i]`/`low[i]` de esa misma barra, y la comparación `high[i] >= resistencia` (o `low[i] <= soporte`) vuelve a ser una autocomparación trivialmente verdadera. **Resultado: `armadoVenta` y `armadoCompra` se re-arman —a menudo simultáneamente— en cada barra que expande el rango del bloque en formación, durante todo el tiempo que dure el bloque, sin relación con ningún nivel real** — es ruido, no señal, y no un problema acotado a la barra de apertura.
 
 ### 3.3 Corrección
 
@@ -250,7 +250,9 @@ Propongo `maxConcurrentPorDireccion = 1` como default de partida (una sola opera
 
 ## 7. Métricas a preservar del original (para validar la migración)
 
-El original lleva contadores en vivo que sirven como checksum al portar la lógica: `nSig` (señales), `nFill` (llenadas), `nWin`/`nLoss`, `nNone` (expiradas sin llenar), `nSkip` (descartadas por stop inválido — ahora hay que separar esto de las descartadas por concurrencia), `nOpen` (cerradas por tiempo). El motor de backtest de la Fase 3 debe exponer estos mismos contadores para poder comparar contra un recorrido manual del Pine original sobre el mismo tramo de datos como sanity check.
+El original lleva contadores en vivo que sirven de referencia al portar la lógica: `nSig` (señales), `nFill` (llenadas), `nWin`/`nLoss`, `nNone` (expiradas sin llenar), `nSkip` (descartadas por stop inválido — ahora hay que separar esto de las descartadas por concurrencia), `nOpen` (cerradas por tiempo). El motor de backtest de la Fase 3 debe exponer estos mismos contadores.
+
+**Importante:** esos conteos agregados **no van a coincidir** con los del Pine original corriendo en ninguno de sus dos modos — ni el repintante (`usarCausal=false`) ni el causal con el bug (`usarCausal=true`) — porque esta especificación corrige a propósito el cálculo del bloque HTF (§3.3) y por lo tanto arma y dispara señales en momentos distintos a los dos. Esa diferencia es esperada, no un error de portado. El checksum útil no es "¿el total de `nSig`/`nWin`/`nLoss` coincide con el Pine?", sino verificar, sobre casos puntuales, que las reglas mecánicas del ciclo de vida se cumplen igual: prioridad de llenado antes que expiración (§5.2), empate = gana el SL (§5.3/§5.4), y el resto de las reglas de la §5.5. Si en Fase 3 los números agregados difieren del Pine original, eso por sí solo no es una señal de bug.
 
 ---
 
