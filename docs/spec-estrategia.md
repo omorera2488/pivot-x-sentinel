@@ -51,6 +51,8 @@ bucket_id(t) = floor(unix_minutes(t) / periodos)
 
 Todas las barras del timeframe base cuyo `time[i]` cae en el mismo `bucket_id` pertenecen al mismo bloque. Esta es una decisión de esta especificación (el Pine original delega la alineación exacta a `time(htf)` de TradingView, ligada a la sesión del símbolo); lo que importa aquí es que backtest y vivo usen exactamente la misma regla — **si al conectar con MT5 se detecta que el servidor del bróker entrega timestamps en una zona horaria distinta a UTC, hay que normalizar a UTC antes de aplicar esta fórmula, no cambiar la fórmula.**
 
+**Cómo medir el offset del bróker, sin asumir de antemano cuál es:** al conectar, pedir un tick reciente con `symbol_info_tick` (trae su propio timestamp de servidor) y compararlo contra el reloj UTC del sistema en el instante exacto de esa consulta. La diferencia es el offset horario de ESE bróker en ESE momento — funciona igual sin importar qué bróker sea, y no depende de tener hardcodeada la zona horaria de ningún servidor en particular. Este mismo mecanismo resuelve tanto la ingesta histórica (Fase 3) como el arranque del motor en vivo (Fase 4) contra una cuenta nueva sin configuración manual previa. Nota: el offset puede cambiar con el horario de verano de la zona del bróker, así que conviene re-medirlo en cada conexión, no cachearlo indefinidamente.
+
 ### 3.2 Bug corregido
 
 En el original, `usarCausal=true` calcula `resistencia`/`soporte` como el máximo/mínimo **del bloque que se está formando en este mismo instante**:

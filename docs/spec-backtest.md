@@ -20,6 +20,8 @@ El bot final (Fase 4+) debe poder correr contra cualquier bróker que ofrezca `M
 
 Historial propio de MT5 vía `MetaTrader5.copy_rates_range` (paquete oficial, ya decidido en Fase 0), desde la misma terminal/cuenta que luego se usará en vivo. Ventaja sobre un proveedor externo: mismo timestamp/timezone, mismo símbolo, y el spread histórico real del bróker viaja con cada vela (§3.1) — nada que homogeneizar entre backtest y vivo.
 
+**Offset horario del bróker (resuelto, agnóstico de bróker):** ver `spec-estrategia.md` §3.1 — al conectar, se mide con `symbol_info_tick` contra el reloj UTC del sistema en ese instante, sin necesidad de saber de antemano qué bróker es. El motor de descarga usa el mismo mecanismo para normalizar los timestamps de `copy_rates` a UTC antes de aplicar la fórmula de bloque HTF.
+
 ### 2.2 Profundidad de historial disponible (medida en la cuenta de validación, 2026-08-17)
 
 Sondeada en vivo contra `Exness-MT5Trial11` / `XAUUSDm`:
