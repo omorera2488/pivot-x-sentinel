@@ -19,13 +19,15 @@ Decisiones ya tomadas:
 
 ---
 
-## Fase 1 — Repositorio y esqueleto del proyecto
+## Fase 1 — Repositorio y esqueleto del proyecto ✅ COMPLETADA
 
 **Objetivo:** tener un lugar de trabajo real donde ir completando las fases siguientes.
 
+Repo: https://github.com/omorera2488/pivot-x-sentinel
+
 **Pendiente del lado del usuario:**
-- Crear el repo vacío en GitHub (privado o público, a elección).
-- Confirmar la ruta local del bot "M1 Pivotes 15" si se va a usar como referencia de estructura/estilo del panel.
+- ~~Crear el repo vacío en GitHub (privado o público, a elección).~~ ✅ hecho.
+- Confirmar la ruta local del bot "M1 Pivotes 15" si se va a usar como referencia de estructura/estilo del panel (relevante recién en Fase 6, no bloquea el avance ahora).
 
 **Estructura de carpetas propuesta:**
 ```
@@ -138,7 +140,7 @@ Decisiones ya tomadas:
 | Fase | Estado |
 |---|---|
 | 0 — Fundamentos | ✅ Completada |
-| 1 — Repositorio y esqueleto | ⏳ Pendiente (falta crear el repo) |
+| 1 — Repositorio y esqueleto | ✅ Completada |
 | 2 — Especificación funcional | ⏳ Pendiente |
 | 3 — Backtest de Oro | ⏳ Pendiente |
 | 4 — Ejecución en vivo | ⏳ Pendiente |
