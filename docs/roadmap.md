@@ -64,7 +64,9 @@ Especificación formal: [docs/spec-estrategia.md](spec-estrategia.md). Código P
 
 ---
 
-## Fase 3 — Backtest de Oro con costos reales
+## Fase 3 — Backtest de Oro con costos reales ⏳ EN REVISIÓN
+
+Especificación: [docs/spec-backtest.md](spec-backtest.md).
 
 **Objetivo:** validar si existe una ventaja (edge) real en Oro después de costos, antes de escribir una sola línea del bot en vivo.
 
@@ -144,7 +146,7 @@ Especificación formal: [docs/spec-estrategia.md](spec-estrategia.md). Código P
 | 0 — Fundamentos | ✅ Completada |
 | 1 — Repositorio y esqueleto | ✅ Completada |
 | 2 — Especificación funcional | ✅ Completada |
-| 3 — Backtest de Oro | ⏳ Pendiente |
+| 3 — Backtest de Oro | ⏳ En revisión (borrador listo) |
 | 4 — Ejecución en vivo | ⏳ Pendiente |
 | 5 — API local | ⏳ Pendiente |
 | 6 — Panel web | ⏳ Pendiente |
