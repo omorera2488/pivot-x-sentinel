@@ -97,19 +97,21 @@ Lote fijo configurable (`fixedLot`, ej. `0.01`), igual para todas las operacione
 
 Parámetros a barrer (todos ya definidos en `spec-estrategia.md`):
 
-| Parámetro | Rango de partida sugerido | Nota |
-|---|---|---|
-| `emaPeriods` | 8 – 25 | Centrado en el default 12 del Pine 5m |
-| `periodos` (bloque HTF, minutos) | 200 – 800 | Centrado en el default 400 |
-| `bufBp` | 0.2 – 3.0 | El 0.4 original está pensado para forex; para Oro puede quedar corto |
-| `rr` | 0.5 – 3.0 | Sin asumir el "7" que el Pine solo dejaba anotado en un comentario, nunca como default real |
-| `maxConcurrentPorDireccion` | 1 – 3 | Punto de partida 1, ver §6 de `spec-estrategia.md` |
+| Parámetro | Rango | Paso | Valores | Nota |
+|---|---|---|---|---|
+| `emaPeriods` | 8 – 23 | 3 | 6 | Centrado en el default 12 del Pine 5m |
+| `periodos` (bloque HTF, minutos) | 200 – 800 | 150 | 5 | Centrado en el default 400 |
+| `bufBp` | 0.2 – 3.0 | 0.5 | 7 | El 0.4 original está pensado para forex; para Oro puede quedar corto |
+| `rr` | 0.5 – 3.0 | 0.5 | 6 | Sin asumir el "7" que el Pine solo dejaba anotado en un comentario, nunca como default real |
+| `maxConcurrentPorDireccion` | 1 – 3 | 1 | 3 | Punto de partida 1, ver §6 de `spec-estrategia.md` |
+
+Total: 6×5×7×6×3 = **3.780 combinaciones**.
 
 `chartTF` fijo en `M5` para este primer barrido (§2.2). `validBars`, `ordenViva`, `maxBarsTrade` quedan en los defaults del Pine (10, `true`, 500) salvo que el barrido inicial muestre motivo para tocarlos.
 
 **Métrica objetivo:** expectancy neta de costos por operación, en R y en US$ (con `fixedLot`), sobre el conjunto de combinaciones. Métricas secundarias a reportar por combinación: win rate, R:R real de las ganadoras/perdedoras, drawdown máximo en R, número total de operaciones (para descartar combinaciones con muestra insuficiente), y los contadores de §7 de `spec-estrategia.md` (fills, expiradas, descartadas por concurrencia vs. por stop inválido).
 
-**Método:** grid search exhaustivo sobre la malla de arriba mientras el número de combinaciones sea manejable (`emaPeriods` × `periodos` × `bufBp` × `rr` × `maxConcurrentPorDireccion` con los rangos sugeridos ronda las ~2000-4000 combinaciones — corrible en M5 sobre 1.4 años sin problema). Si se decide ampliar rangos y el espacio crece demasiado, pasar a random search o coordinate descent antes que reducir la muestra de datos.
+**Método:** grid search exhaustivo sobre la malla de arriba (3.780 combinaciones, corrible en M5 sobre 1.4 años sin problema). Si se decide ampliar rangos y el espacio crece demasiado, pasar a random search o coordinate descent antes que reducir la muestra de datos.
 
 ---
 
@@ -140,3 +142,21 @@ Como ya se dejó dicho en `spec-estrategia.md` §7: **no comparar los conteos ag
 2. **Confirmar la política de swap triple** de Exness (día exacto, ¿miércoles o viernes según convención del bróker?) antes de dar el resultado del backtest por válido (§3.3).
 3. **Fechas exactas de los 3 sub-períodos** (§5) una vez descargado el histórico real — depende de cuánto M5 efectivamente se logre bajar sin huecos.
 4. **Reconfirmar la profundidad de historial** (§2.2) contra la cuenta/servidor que se use para correr el barrido real, si no es la misma cuenta de validación de este documento.
+
+---
+
+## 8. Resultados del primer barrido (2026-08-18)
+
+Motor implementado en [/backtests](../backtests) siguiendo esta especificación al pie de la letra. Checksum mecánico (§6) pasado — las 4 reglas se verifican sobre datos sintéticos antes de confiar en el barrido. Corrida real: 100.000 velas M5 de `XAUUSDm` (2025-03-19 a 2026-08-18, ~1.4 años), costos en vivo desde `symbol_info` (spread real por vela), malla completa de 3.780 combinaciones (§4).
+
+**Resultado: el criterio de aceptación de la Fase 3 NO se cumple.** No hay una combinación de parámetros con expectancy positiva después de costos que se sostenga en los 3 sub-períodos.
+
+- De las 3.780 combinaciones, solo **7** (0,2%) tienen `expectancy_r` positiva en la muestra completa — y las 7 son marginales (la mejor: **+0,01R por operación**, +US$1,51 con lote 0,01).
+- **Las 7 combinaciones positivas caen exactamente en `rr = 3.0`, el borde superior de la malla barrida.** Al revisar la sensibilidad a `rr` con los demás parámetros fijos en su mejor combinación, la expectancy NO mejora de forma monótona con `rr` — sube y baja sin una tendencia limpia (ver `results/sweep_full.csv`) — lo que descarta que "haga falta barrer un `rr` más alto todavía"; es más compatible con ruido que con una señal real.
+- El drawdown máximo de la mejor combinación es de **36R**, descomunal frente a una expectancy de +0,01R por operación — otra marca típica de sobreajuste, no de edge real.
+- Validado contra los 3 sub-períodos (`scripts/04_run_robustness.py`, splits de ~173 días cada uno): la mejor combinación y sus vecinas más cercanas en la malla dan **positivo en 2 de 3 sub-períodos y negativo en el sub-período central** — ninguna combinación probada sostiene expectancy positiva en los 3 a la vez. Resultados completos en `results/robustness_subperiods.csv`.
+
+**Hallazgo estructural, no un bug:** en promedio el **51%** de las señales generadas (hasta 64% con `periodos_htf_min = 800`) se descartan por "stop del lado incorrecto" (§4.4). Causa: el armado (`armadoVenta`/`armadoCompra`) queda activo indefinidamente hasta que se dispare una señal, pero `resistencia`/`soporte` se recalculan en cada bloque HTF nuevo — si pasan varios bloques entre el armado y la señal, el nivel usado para el stop en el momento de la señal ya no es el mismo que armó originalmente, y con frecuencia queda del lado equivocado. Esto es consecuencia directa de la decisión ya tomada en `spec-estrategia.md` §4.4 (stop = mismo nivel que arma, sin trackear el extremo en formación por separado) interactuando con la regla de armado persistente — vale la pena tenerlo presente como hipótesis de rediseño si se decide seguir iterando sobre la estrategia, aunque no se tocó nada del spec ya aprobado sin volver a pasar por revisión explícita.
+
+**Alcance de esta corrida — lo que NO se probó:** solo `chartTF = M5`. M1, M15 y H1 quedan sin explorar (M1 sigue con historial insuficiente, ver §2.2; M15/H1 tienen historial de sobra pero no se corrieron en este primer barrido).
+

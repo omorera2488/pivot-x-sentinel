@@ -1,0 +1,6 @@
+MetaTrader5
+numpy
+pandas
+pyarrow
+numba
+tqdm

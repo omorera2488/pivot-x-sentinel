@@ -64,9 +64,9 @@ Especificación formal: [docs/spec-estrategia.md](spec-estrategia.md). Código P
 
 ---
 
-## Fase 3 — Backtest de Oro con costos reales ⏳ SPEC APROBADA, PENDIENTE DE EJECUTAR
+## Fase 3 — Backtest de Oro con costos reales ❌ CRITERIO NO CUMPLIDO (M5)
 
-Especificación: [docs/spec-backtest.md](spec-backtest.md) — aprobada como borrador de diseño. Falta implementar el motor (usuario / Claude Code local) y correr el barrido real; la fase no se da por completa hasta confirmar el criterio de aceptación (expectancy positiva después de costos, sostenida en los 3 sub-períodos). Volver a esta sesión con los resultados antes de pasar a la Fase 4.
+Especificación: [docs/spec-backtest.md](spec-backtest.md). Motor implementado en [/backtests](../backtests), checksum mecánico pasado, barrido completo de 3.780 combinaciones corrido sobre M5 real con costos en vivo. **Resultado: sin edge robusto** — el detalle completo está en `spec-backtest.md` §8 ("Resultados del primer barrido"). No se cumple el criterio de aceptación de la fase; no se pasa a Fase 4 hasta decidir cómo seguir (redesign, otro timeframe, u otra dirección).
 
 **Objetivo:** validar si existe una ventaja (edge) real en Oro después de costos, antes de escribir una sola línea del bot en vivo.
 
@@ -146,7 +146,7 @@ Especificación: [docs/spec-backtest.md](spec-backtest.md) — aprobada como bor
 | 0 — Fundamentos | ✅ Completada |
 | 1 — Repositorio y esqueleto | ✅ Completada |
 | 2 — Especificación funcional | ✅ Completada |
-| 3 — Backtest de Oro | ⏳ Spec aprobada, falta implementar y correr |
+| 3 — Backtest de Oro | ❌ Corrido — sin edge robusto en M5, ver spec-backtest.md §8 |
 | 4 — Ejecución en vivo | ⏳ Pendiente |
 | 5 — API local | ⏳ Pendiente |
 | 6 — Panel web | ⏳ Pendiente |

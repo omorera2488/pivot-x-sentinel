@@ -1,0 +1,4 @@
+# Historial descargado de MT5 — se regenera con scripts/01_download_data.py,
+# no tiene sentido versionarlo (pesa varios MB y crece con cada descarga).
+data/
+__pycache__/
