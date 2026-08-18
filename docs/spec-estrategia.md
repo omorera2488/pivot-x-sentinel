@@ -93,7 +93,15 @@ Esta corrección resuelve a la vez el repintado (el original repintaba en el mod
 
 ### 4.1 EMA
 
-`ema[i] = EMA(close, emaPeriods)` — media exponencial estándar.
+`ema[i] = EMA(close, emaPeriods)`, replicando la fórmula real de `ta.ema` de Pine (verificada, no supuesta):
+
+```
+alpha = 2 / (emaPeriods + 1)
+ema[0] = close[0]
+ema[i] = alpha * close[i] + (1 - alpha) * ema[i-1]     // i >= 1
+```
+
+**Ojo con esto al portar a otro lenguaje/librería:** no es la convención de TA-Lib/MT5, que siembra la EMA con una SMA de las primeras `emaPeriods` barras y recién arranca el cálculo recursivo después de ese período de calentamiento. `ta.ema` no espera ningún calentamiento — arranca en la primera barra con `ema[0] = close[0]`. La diferencia se diluye rápido (la influencia de la semilla decae exponencialmente en unas pocas veces el período) pero es una fórmula distinta, y usar la convención equivocada fue un error real detectado durante la implementación en `/strategy` — no una decisión de esta especificación.
 
 ### 4.2 Armado
 
@@ -125,7 +133,7 @@ dir   = senalVenta ? -1 : +1
 entry = ema[i]                          // frozen; ver variante "entrada viva" abajo
 ```
 
-**Variante `entradaViva` (default `false`, opcional):** en vez de congelar `entry` en el valor de la EMA de la barra de señal, la orden límite sigue el valor ACTUAL de la EMA en cada barra mientras esté pendiente (se acerca al precio en vez de esperar un retest del nivel original). Cuando finalmente se llena, el take profit se recalcula con el riesgo real observado en ese momento (`|stop - entryUsado|`) en vez del riesgo original. No es el comportamiento por defecto; se documenta por si se quiere exponer como parámetro, pero **Fase 3 evalúa primero el modo por defecto (entrada congelada)**.
+**Variante `entradaViva` (default `false`, opcional, implementada en `strategy/engine.py` como `StrategyParams.entrada_viva`):** en vez de congelar `entry` en el valor de la EMA de la barra de señal, la orden límite sigue el valor ACTUAL de la EMA en cada barra mientras esté pendiente (se acerca al precio en vez de esperar un retest del nivel original). Cuando finalmente se llena, el take profit se recalcula con el riesgo real observado en ese momento (`|stop - entryUsado|`) en vez del riesgo original. El stop nunca se mueve — sigue siendo el mismo, congelado desde la señal. Las condiciones de expiración de la orden pendiente (`tpAntes`/`muerto`/`caduca`, §5.2) siguen evaluándose contra el `entry`/`target` ORIGINALES de la señal, sin importar `entradaViva` — solo cambia qué nivel dispara el llenado y el target una vez llenada, igual que en el Pine. No es el comportamiento por defecto.
 
 ### 4.4 Stop y take profit
 

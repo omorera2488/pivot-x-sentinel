@@ -40,6 +40,7 @@ class StrategyParams:
     orden_viva: bool = True
     max_bars_trade: int = 500
     fixed_lot: float = 0.01
+    entrada_viva: bool = False     # spec-estrategia.md #4.3 -- variante del Pine, default False
 
 
 @dataclass
@@ -109,17 +110,18 @@ class BacktestResult:
 
 
 def ema(close: np.ndarray, period: int) -> np.ndarray:
+    """Replica ta.ema de Pine tal cual: sum := na(sum[1]) ? src : alpha*src +
+    (1-alpha)*sum[1] — arranca directo en la primera barra (ema[0]=close[0]),
+    SIN sembrar con una SMA de `period` barras (a diferencia de TA-Lib/MT5).
+    Verificado contra la formula publicada de ta.ema, no supuesto."""
     n = len(close)
     out = np.full(n, np.nan)
-    if n < period:
+    if n == 0:
         return out
     alpha = 2.0 / (period + 1)
-    seed = close[:period].mean()
-    out[period - 1] = seed
-    prev = seed
-    for i in range(period, n):
-        prev = close[i] * alpha + prev * (1 - alpha)
-        out[i] = prev
+    out[0] = close[0]
+    for i in range(1, n):
+        out[i] = close[i] * alpha + out[i - 1] * (1 - alpha)
     return out
 
 
@@ -268,23 +270,38 @@ def run_backtest(
         still_pending = []
         for po in pending:
             d = po["dir"]
-            touched = high[i] >= po["entry"] if d < 0 else low[i] <= po["entry"]
+            # entradaViva (spec-estrategia #4.3): el nivel que se vigila para
+            # el llenado sigue la EMA ACTUAL en vez de quedar fijo en la EMA
+            # de la barra de señal. El stop nunca se mueve (sigue el mismo,
+            # congelado desde la señal); el target sí se recalcula al llenar,
+            # con el riesgo REAL observado en ese momento -- exactamente como
+            # en el Pine (`entryUse`/`tpUse`, ver basecode_tradingview).
+            entry_use = ema_line[i] if params.entrada_viva else po["entry"]
+            touched = high[i] >= entry_use if d < 0 else low[i] <= entry_use
             if touched:
                 counters.n_fill += 1
                 sp = costs.spread_price(spread_pts[i])
-                entry_adj = costs.adjust_entry_price(d, po["entry"], sp)
+                entry_adj = costs.adjust_entry_price(d, entry_use, sp)
+                if params.entrada_viva:
+                    r_now = abs(po["stop"] - entry_use)
+                    target_use = entry_use - params.rr * r_now if d < 0 else entry_use + params.rr * r_now
+                else:
+                    target_use = po["target"]
                 hit_sl = high[i] >= po["stop"] if d < 0 else low[i] <= po["stop"]
-                hit_tp = low[i] <= po["target"] if d < 0 else high[i] >= po["target"]
-                pos = {"dir": d, "stop": po["stop"], "target": po["target"], "open_bar": i,
-                       "born_bar": po["born"], "entry_price": po["entry"], "entry_price_adj": entry_adj}
+                hit_tp = low[i] <= target_use if d < 0 else high[i] >= target_use
+                pos = {"dir": d, "stop": po["stop"], "target": target_use, "open_bar": i,
+                       "born_bar": po["born"], "entry_price": entry_use, "entry_price_adj": entry_adj}
                 if hit_sl:
                     close_open_trade(pos, i, "loss", po["stop"])
                 elif hit_tp:
-                    close_open_trade(pos, i, "win", po["target"])
+                    close_open_trade(pos, i, "win", target_use)
                 else:
                     open_pos.append(pos)
                 continue
 
+            # tpAntes/muerto/caduca SIEMPRE contra el target/entry originales de
+            # la señal -- entradaViva no cambia estas condiciones de expiracion
+            # en el Pine, solo cambia que dispara el llenado y el target post-fill.
             tp_antes = low[i] <= po["target"] if d < 0 else high[i] >= po["target"]
             expired = False
             if tp_antes:

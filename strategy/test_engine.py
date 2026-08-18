@@ -170,6 +170,48 @@ def test_d_concurrency_limit_blocks_second_signal():
     print("  D) limite de concurrencia bloquea una señal nueva con el cupo ocupado: OK")
 
 
+def test_f_entrada_viva():
+    # entradaViva (spec-estrategia #4.3): el llenado sigue la EMA ACTUAL, no
+    # la de la señal, y el target se recalcula con el riesgo REALIZADO al
+    # llenar -- exactamente el comportamiento de basecode_tradingview.
+    #
+    # Señal en bar2 (entry original=100, stop=90, target original=110).
+    # En bar3 la EMA actual bajo a 95 y el precio la toca ahi (no en 100):
+    # llenado a 95 (no a 100). Riesgo real = |90-95|=5, target nuevo = 100
+    # (no 110). En bar4 el precio llega a 100 -> gana con el target NUEVO.
+    n = 5
+    time_utc = _times(n)
+    time_server = time_utc.copy()
+
+    close = np.array([98, 99, 101, 95, 97], dtype=float)
+    ema_line = np.array([100, 100, 100, 95, 97], dtype=float)
+    high = np.array([99, 100, 102, 96, 101], dtype=float)
+    low = np.array([97, 85, 100, 94, 97], dtype=float)
+    open_ = close.copy()
+    spread_pts = np.zeros(n)
+
+    resistencia = np.full(n, 1000.0)
+    soporte = np.full(n, 90.0)
+
+    params = StrategyParams(
+        ema_periods=1, periodos_htf_min=999999, buf_bp=0.0, rr=1.0,
+        max_concurrent_por_direccion=5, valid_bars=10, orden_viva=True,
+        max_bars_trade=500, fixed_lot=1.0, entrada_viva=True,
+    )
+
+    res = run_backtest(time_utc, time_server, open_, high, low, close, spread_pts,
+                        params, ZERO_COST, ema_line=ema_line, resistencia=resistencia, soporte=soporte)
+
+    assert len(res.trades) == 1, f"se esperaba 1 operacion, hubo {len(res.trades)}"
+    t = res.trades[0]
+    assert t.entry_price == 95.0, f"con entradaViva el llenado deberia ser a la EMA actual (95), fue {t.entry_price}"
+    assert t.stop == 90.0, "el stop no deberia moverse con entradaViva"
+    assert t.target == 100.0, f"el target deberia recalcularse con el riesgo real (95-90=5 -> 100), fue {t.target}"
+    assert t.outcome == "win", f"se esperaba 'win' contra el target recalculado, fue {t.outcome}"
+
+    print("  F) entradaViva: llenado en la EMA actual + target recalculado al riesgo real: OK")
+
+
 def test_e_profiles():
     from strategy.profiles import get_profile
 
@@ -202,4 +244,5 @@ if __name__ == "__main__":
     test_c_bucket_no_self_arm()
     test_d_concurrency_limit_blocks_second_signal()
     test_e_profiles()
-    print("\nTODO OK — las 4 reglas mecanicas se cumplen + seleccion de perfil OK.")
+    test_f_entrada_viva()
+    print("\nTODO OK — las 4 reglas mecanicas se cumplen + seleccion de perfil + entradaViva OK.")
