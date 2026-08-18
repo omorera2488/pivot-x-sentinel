@@ -1,9 +1,13 @@
 """Corre el barrido completo de parametros (docs/spec-backtest.md #4) sobre
 el historial descargado y guarda los resultados en /backtests/results.
 
+Cada timeframe base tiene su propio perfil de malla, centrado en los
+defaults del Pine original de ese timeframe (src/sweep.py grid_1m/grid_5m) —
+ver docs/spec-backtest.md #4.1.
+
 Uso:
-    python scripts/03_run_sweep.py [ruta_parquet]
-Default: data/XAUUSDm_M5_latest.parquet
+    python scripts/03_run_sweep.py [M1|M5] [ruta_parquet]
+Default: M5, data/XAUUSDm_M5_latest.parquet
 """
 import sys
 import time
@@ -13,16 +17,19 @@ import pandas as pd
 from tqdm import tqdm
 import MetaTrader5 as mt5
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))       # backtests/, para "import src"
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))       # repo root, para "import strategy"
 
-from src.costs import BrokerCosts
-from src.sweep import default_grid, run_sweep
+from strategy.costs import BrokerCosts
+from src.sweep import grid_1m, grid_5m, run_sweep
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 RESULTS_DIR = Path(__file__).resolve().parents[1] / "results"
 
 SYMBOL = "XAUUSDm"
 FIXED_LOT = 0.01
+
+GRID_BY_TF = {"M1": grid_1m, "M5": grid_5m}
 
 
 def load_bars(path: Path) -> dict:
@@ -60,8 +67,14 @@ def get_live_costs(symbol: str) -> BrokerCosts:
 
 
 def main():
-    path = Path(sys.argv[1]) if len(sys.argv) > 1 else DATA_DIR / f"{SYMBOL}_M5_latest.parquet"
+    tf = sys.argv[1].upper() if len(sys.argv) > 1 else "M5"
+    if tf not in GRID_BY_TF:
+        print(f"Timeframe no soportado: {tf!r} (opciones: {list(GRID_BY_TF)})")
+        sys.exit(1)
+    path = Path(sys.argv[2]) if len(sys.argv) > 2 else DATA_DIR / f"{SYMBOL}_{tf}_latest.parquet"
+
     bars, df = load_bars(path)
+    print(f"Perfil: {tf}")
     print(f"Datos: {len(df)} velas, {pd.to_datetime(df['time_utc'].iloc[0], unit='s')} .. {pd.to_datetime(df['time_utc'].iloc[-1], unit='s')}")
 
     costs = get_live_costs(SYMBOL)
@@ -69,11 +82,11 @@ def main():
           f"tick_value={costs.tick_value} swap_long_pts={costs.swap_long_points} swap_short_pts={costs.swap_short_points} "
           f"commission_per_lot={costs.commission_per_lot} (SUPUESTO) triple_swap_weekday={costs.triple_swap_weekday} (SUPUESTO)")
 
-    grid = default_grid()
+    grid = GRID_BY_TF[tf]()
     total = 1
     for v in grid.values():
         total *= len(v)
-    print(f"Malla: {total} combinaciones")
+    print(f"Malla ({tf}): {total} combinaciones -- ema_periods={grid['ema_periods']} periodos_htf_min={grid['periodos_htf_min']}")
 
     t0 = time.time()
     rows = run_sweep(bars, grid, costs, fixed_lot=FIXED_LOT, progress=tqdm)
@@ -82,14 +95,14 @@ def main():
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out = pd.DataFrame(rows)
-    out_path = RESULTS_DIR / "sweep_full.csv"
+    out_path = RESULTS_DIR / f"sweep_full_{tf}.csv"
     out.to_csv(out_path, index=False)
     print(f"Guardado: {out_path} ({len(out)} filas)")
 
     # top combinaciones con muestra minimamente relevante
     relevant = out[out["n_trades"] >= 30].copy()
     relevant = relevant.sort_values("expectancy_r", ascending=False)
-    top_path = RESULTS_DIR / "sweep_top20.csv"
+    top_path = RESULTS_DIR / f"sweep_top20_{tf}.csv"
     relevant.head(20).to_csv(top_path, index=False)
     print(f"Top 20 (n_trades>=30) guardado en: {top_path}")
     print(relevant.head(10).to_string(index=False))

@@ -1,11 +1,12 @@
-"""Motor de backtest — implementa docs/spec-estrategia.md al pie de la letra
-(version corregida, no el Pine original) mas el modelo de costos de
-docs/spec-backtest.md #3.
+"""Motor de la estrategia — implementa docs/spec-estrategia.md al pie de la
+letra (version corregida, no el Pine original). Logica pura: sin MT5, sin
+red, testeable de forma aislada (ver /strategy en docs/roadmap.md).
 
 Contrato de entrada: arrays numpy de una misma longitud n, ordenados por
 tiempo ascendente:
     time_utc   int64   segundos unix, YA corregidos por el offset del broker
-                        (ver src/offset.py) — se usan para alinear el bloque HTF.
+                        (ver backtests/src/offset.py, o el equivalente en vivo
+                        de Fase 4) — se usan para alinear el bloque HTF.
     time_server int64  segundos unix, tal cual los entrega MT5 (sin corregir)
                         — se usan para contar rollovers de swap (medianoche
                         del broker, no medianoche UTC).
@@ -13,6 +14,9 @@ tiempo ascendente:
     spread_pts float64  campo 'spread' de copy_rates (puntos), puede ser NaN.
 
 No repinta nada: en la barra i solo se usan datos de la barra i o anteriores.
+El modelo de costos (BrokerCosts, costs.py) es un parametro — este modulo no
+asume ningun broker; correrlo con costos en cero da el resultado de la
+estrategia "pelada", sin fricciones.
 """
 from __future__ import annotations
 
@@ -174,7 +178,7 @@ def run_backtest(
 ) -> BacktestResult:
     """Los parametros ema_line/resistencia/soporte son un hook de testeo: si se
     pasan, se usan tal cual (permite construir escenarios deterministicos en
-    scripts/02_run_checksum.py sin tener que resolver EMA a mano). En el
+    strategy/test_engine.py sin tener que resolver EMA a mano). En el
     camino real (sweep/robustez) se dejan en None y se calculan aca."""
     n = len(close)
     if ema_line is None:

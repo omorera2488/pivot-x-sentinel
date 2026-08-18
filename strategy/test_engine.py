@@ -12,7 +12,7 @@ spec-estrategia.md #7):
      maxConcurrentPorDireccion operaciones vivas en esa direccion.
 
 Uso:
-    python scripts/02_run_checksum.py
+    python strategy/test_engine.py
 Sale con exit code 0 y "TODO OK" si las 4 reglas se cumplen, o levanta
 AssertionError senalando cual regla fallo.
 """
@@ -21,10 +21,10 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, para "import strategy"
 
-from src.engine import StrategyParams, run_backtest, bucket_levels
-from src.costs import BrokerCosts
+from strategy.engine import StrategyParams, run_backtest, bucket_levels
+from strategy.costs import BrokerCosts
 
 ZERO_COST = BrokerCosts(
     point=1.0, contract_size=1.0, tick_value=1.0,
@@ -170,9 +170,36 @@ def test_d_concurrency_limit_blocks_second_signal():
     print("  D) limite de concurrencia bloquea una señal nueva con el cupo ocupado: OK")
 
 
+def test_e_profiles():
+    from strategy.profiles import get_profile
+
+    p1 = get_profile("1m")
+    assert (p1.ema_periods, p1.periodos_htf_min) == (15, 100), "perfil 1m deberia ser ema=15, bloque=100min"
+
+    p5 = get_profile("5m")
+    assert (p5.ema_periods, p5.periodos_htf_min) == (12, 400), "perfil 5m deberia ser ema=12, bloque=400min"
+
+    # alias al estilo MT5 (M1/M5), usados en backtests/
+    assert get_profile("M1") == p1
+    assert get_profile("M5") == p5
+
+    # overrides no pisan el resto del perfil
+    p5_custom = get_profile("5m", rr=2.0)
+    assert p5_custom.rr == 2.0 and p5_custom.ema_periods == 12
+
+    try:
+        get_profile("M15")
+        raise AssertionError("se esperaba ValueError para un perfil inexistente")
+    except ValueError:
+        pass
+
+    print("  E) seleccion de perfil (1m/5m, alias M1/M5, overrides): OK")
+
+
 if __name__ == "__main__":
     print("Checksum mecanico del motor (docs/spec-backtest.md #6)\n")
     test_a_and_b_fill_priority_and_tie_break()
     test_c_bucket_no_self_arm()
     test_d_concurrency_limit_blocks_second_signal()
-    print("\nTODO OK — las 4 reglas mecanicas se cumplen.")
+    test_e_profiles()
+    print("\nTODO OK — las 4 reglas mecanicas se cumplen + seleccion de perfil OK.")

@@ -4,23 +4,49 @@ from __future__ import annotations
 from dataclasses import asdict
 from itertools import product
 
-from .engine import StrategyParams, run_backtest
-from .costs import BrokerCosts
+from strategy.engine import StrategyParams, run_backtest
+from strategy.costs import BrokerCosts
 
 
 def linspace_count(start: float, step: float, count: int) -> list[float]:
     return [round(start + step * i, 6) for i in range(count)]
 
 
-def default_grid() -> dict:
-    """Malla acordada en docs/spec-backtest.md #4 (3.780 combinaciones)."""
+def _shared_risk_grid() -> dict:
+    """Parametros de riesgo/concurrencia: NO dependen del timeframe base, se
+    barren igual para el perfil M1 y el perfil M5 (docs/spec-backtest.md #4)."""
     return {
-        "ema_periods": [int(v) for v in linspace_count(8, 3, 6)],
-        "periodos_htf_min": [int(v) for v in linspace_count(200, 150, 5)],
         "buf_bp": linspace_count(0.2, 0.5, 7),
         "rr": linspace_count(0.5, 0.5, 6),
         "max_concurrent_por_direccion": [int(v) for v in linspace_count(1, 1, 3)],
     }
+
+
+def grid_5m() -> dict:
+    """Perfil 5m — centrado en los defaults del Pine '5m EMA y Pivotes ZS'
+    (emaPeriods=12, periodos=400min). 3.780 combinaciones."""
+    return {
+        "ema_periods": [int(v) for v in linspace_count(8, 3, 6)],
+        "periodos_htf_min": [int(v) for v in linspace_count(200, 150, 5)],
+        **_shared_risk_grid(),
+    }
+
+
+def grid_1m() -> dict:
+    """Perfil 1m — centrado en los defaults del Pine '1m EMA y Pivotes ZS'
+    (emaPeriods=15, periodos=100min). Distinto del perfil 5m: mismo metodo
+    (malla impar centrada en el default), rangos propios porque los defaults
+    de origen son distintos. 3.780 combinaciones."""
+    return {
+        "ema_periods": [int(v) for v in linspace_count(9, 3, 6)],       # 9,12,15,18,21,24 (centra en 15)
+        "periodos_htf_min": [int(v) for v in linspace_count(40, 30, 5)],  # 40,70,100,130,160 (centra en 100)
+        **_shared_risk_grid(),
+    }
+
+
+def default_grid() -> dict:
+    """Alias retrocompatible del perfil 5m (docs/spec-backtest.md #4)."""
+    return grid_5m()
 
 
 def iter_param_combos(grid: dict, fixed_lot: float, valid_bars: int, orden_viva: bool, max_bars_trade: int):

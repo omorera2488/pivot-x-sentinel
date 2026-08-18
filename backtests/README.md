@@ -1,8 +1,8 @@
 # backtests
 
-Motor de backtesting y resultados específicos de Oro (XAUUSD): modelo de costos (spread, comisión, swap), barrido de parámetros y pruebas de robustez por sub-períodos.
+Backtesting específico de Oro (XAUUSD) sobre el motor de [/strategy](../strategy): modelo de costos (spread, comisión, swap), barrido de parámetros y pruebas de robustez por sub-períodos, uno por cada perfil (`1m`/`5m`, ver `strategy/profiles.py`).
 
-Implementa [docs/spec-estrategia.md](../docs/spec-estrategia.md) y [docs/spec-backtest.md](../docs/spec-backtest.md) al pie de la letra. Ver ese último documento, sección "Resultados del primer barrido", para el resultado y su interpretación.
+Implementa [docs/spec-backtest.md](../docs/spec-backtest.md) al pie de la letra. Ver ese documento, sección "Resultados", para los resultados y su interpretación (por ahora: perfil 5m corrido, sin edge robusto — §8; perfil 1m sin correr todavía).
 
 ## Instalar
 
@@ -15,13 +15,13 @@ Requiere una terminal MT5 abierta y logueada (el motor se conecta a la instancia
 ## Uso
 
 ```
-python scripts/01_download_data.py XAUUSDm M5   # descarga historial por chunks a data/
-python scripts/02_run_checksum.py               # valida las 4 reglas mecanicas del motor (spec #6)
-python scripts/03_run_sweep.py                  # corre la malla completa de parametros (spec #4)
-python scripts/04_run_robustness.py             # valida los mejores combos en 3 sub-periodos (spec #5)
+python scripts/01_download_data.py XAUUSDm M5      # descarga historial por chunks a data/
+python ../strategy/test_engine.py                  # valida las reglas mecanicas del motor (spec #6) — vive en /strategy
+python scripts/03_run_sweep.py M5                   # corre la malla del perfil (spec #4) -- M1 o M5
+python scripts/04_run_robustness.py M5              # valida los top del barrido en sub-periodos (spec #5)
 ```
 
-`data/` no se versiona (se regenera con el script 01). `results/` sí — es el registro de qué se corrió y qué salió.
+`data/` no se versiona (se regenera con el script 01). `results/` sí — es el registro de qué se corrió y qué salió, con sufijo de perfil (`sweep_full_M5.csv`, etc.).
 
 ## Estructura
 
@@ -29,10 +29,10 @@ python scripts/04_run_robustness.py             # valida los mejores combos en 3
 src/
   offset.py     -> medicion del offset horario del broker (agnostico, symbol_info_tick vs UTC)
   download.py   -> descarga de historial MT5 por chunks
-  costs.py      -> modelo de costos (spread real por vela, comision, swap)
-  engine.py     -> motor de backtest, implementa spec-estrategia.md al pie de la letra
-  sweep.py      -> barrido de parametros
+  sweep.py      -> barrido de parametros por perfil (grid_1m/grid_5m), usa strategy.engine/strategy.costs
 scripts/        -> puntos de entrada CLI, numerados en el orden en que se corren
 results/        -> csv de cada corrida (versionado)
 data/           -> historial OHLC descargado (no versionado, ver .gitignore)
 ```
+
+El motor (`engine.py`), el modelo de costos (`costs.py`) y los perfiles (`profiles.py`) viven en [/strategy](../strategy), no acá — este directorio es solo la capa de backtesting sobre esa lógica.

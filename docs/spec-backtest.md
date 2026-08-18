@@ -95,19 +95,35 @@ Lote fijo configurable (`fixedLot`, ej. `0.01`), igual para todas las operacione
 
 ## 4. Barrido de parámetros
 
-Parámetros a barrer (todos ya definidos en `spec-estrategia.md`):
+### 4.0 Dos perfiles, no un `chartTF` genérico
+
+El código fuente en `/basecode_tradingview` no es una sola estrategia parametrizada por timeframe — son **dos indicadores separados**, cada uno con sus propios defaults (`1m EMA y Pivotes ZS`: `emaPeriods=15`, `periodos=100min`; `5m EMA y Pivotes ZS`: `emaPeriods=12`, `periodos=400min`). Este documento originalmente trataba `chartTF` como un parámetro más de una única malla — corregido: se corren **dos barridos independientes**, cada uno con su propia malla centrada en los defaults de su Pine de origen, no una malla compartida. `bufBp`, `rr` y `maxConcurrentPorDireccion` sí son comunes a ambos perfiles (no son específicos de timeframe).
+
+### 4.1 Perfil 5m
 
 | Parámetro | Rango | Paso | Valores | Nota |
 |---|---|---|---|---|
 | `emaPeriods` | 8 – 23 | 3 | 6 | Centrado en el default 12 del Pine 5m |
 | `periodos` (bloque HTF, minutos) | 200 – 800 | 150 | 5 | Centrado en el default 400 |
-| `bufBp` | 0.2 – 3.0 | 0.5 | 7 | El 0.4 original está pensado para forex; para Oro puede quedar corto |
+| `bufBp` | 0.2 – 3.2 | 0.5 | 7 | El 0.4 original está pensado para forex; para Oro puede quedar corto |
 | `rr` | 0.5 – 3.0 | 0.5 | 6 | Sin asumir el "7" que el Pine solo dejaba anotado en un comentario, nunca como default real |
 | `maxConcurrentPorDireccion` | 1 – 3 | 1 | 3 | Punto de partida 1, ver §6 de `spec-estrategia.md` |
 
-Total: 6×5×7×6×3 = **3.780 combinaciones**.
+Total: 6×5×7×6×3 = **3.780 combinaciones**. Resultado: §8.
 
-`chartTF` fijo en `M5` para este primer barrido (§2.2). `validBars`, `ordenViva`, `maxBarsTrade` quedan en los defaults del Pine (10, `true`, 500) salvo que el barrido inicial muestre motivo para tocarlos.
+### 4.2 Perfil 1m
+
+| Parámetro | Rango | Paso | Valores | Nota |
+|---|---|---|---|---|
+| `emaPeriods` | 9 – 24 | 3 | 6 | Centrado en el default 15 del Pine 1m |
+| `periodos` (bloque HTF, minutos) | 40 – 160 | 30 | 5 | Centrado en el default 100 |
+| `bufBp` | 0.2 – 3.2 | 0.5 | 7 | Igual que el perfil 5m |
+| `rr` | 0.5 – 3.0 | 0.5 | 6 | Igual que el perfil 5m |
+| `maxConcurrentPorDireccion` | 1 – 3 | 1 | 3 | Igual que el perfil 5m |
+
+Total: 6×5×7×6×3 = **3.780 combinaciones**. Muestra disponible bastante más chica que la del perfil 5m (§2.2) — ver §9 para el resultado y su alcance real.
+
+`validBars`, `ordenViva`, `maxBarsTrade` quedan en los defaults del Pine (10, `true`, 500) para ambos perfiles, salvo que un barrido muestre motivo para tocarlos.
 
 **Métrica objetivo:** expectancy neta de costos por operación, en R y en US$ (con `fixedLot`), sobre el conjunto de combinaciones. Métricas secundarias a reportar por combinación: win rate, R:R real de las ganadoras/perdedoras, drawdown máximo en R, número total de operaciones (para descartar combinaciones con muestra insuficiente), y los contadores de §7 de `spec-estrategia.md` (fills, expiradas, descartadas por concurrencia vs. por stop inválido).
 
@@ -145,18 +161,18 @@ Como ya se dejó dicho en `spec-estrategia.md` §7: **no comparar los conteos ag
 
 ---
 
-## 8. Resultados del primer barrido (2026-08-18)
+## 8. Resultados — perfil 5m (2026-08-18)
 
-Motor implementado en [/backtests](../backtests) siguiendo esta especificación al pie de la letra. Checksum mecánico (§6) pasado — las 4 reglas se verifican sobre datos sintéticos antes de confiar en el barrido. Corrida real: 100.000 velas M5 de `XAUUSDm` (2025-03-19 a 2026-08-18, ~1.4 años), costos en vivo desde `symbol_info` (spread real por vela), malla completa de 3.780 combinaciones (§4).
+Motor implementado en [/backtests](../backtests) siguiendo esta especificación al pie de la letra. Checksum mecánico (§6) pasado — las 4 reglas se verifican sobre datos sintéticos antes de confiar en el barrido. Corrida real: 100.000 velas M5 de `XAUUSDm` (2025-03-19 a 2026-08-18, ~1.4 años), costos en vivo desde `symbol_info` (spread real por vela), malla completa de 3.780 combinaciones (§4.1).
 
-**Resultado: el criterio de aceptación de la Fase 3 NO se cumple.** No hay una combinación de parámetros con expectancy positiva después de costos que se sostenga en los 3 sub-períodos.
+**Resultado: el criterio de aceptación de la Fase 3 NO se cumple en el perfil 5m.** No hay una combinación de parámetros con expectancy positiva después de costos que se sostenga en los 3 sub-períodos.
 
 - De las 3.780 combinaciones, solo **7** (0,2%) tienen `expectancy_r` positiva en la muestra completa — y las 7 son marginales (la mejor: **+0,01R por operación**, +US$1,51 con lote 0,01).
-- **Las 7 combinaciones positivas caen exactamente en `rr = 3.0`, el borde superior de la malla barrida.** Al revisar la sensibilidad a `rr` con los demás parámetros fijos en su mejor combinación, la expectancy NO mejora de forma monótona con `rr` — sube y baja sin una tendencia limpia (ver `results/sweep_full.csv`) — lo que descarta que "haga falta barrer un `rr` más alto todavía"; es más compatible con ruido que con una señal real.
+- **Las 7 combinaciones positivas caen exactamente en `rr = 3.0`, el borde superior de la malla barrida.** Al revisar la sensibilidad a `rr` con los demás parámetros fijos en su mejor combinación, la expectancy NO mejora de forma monótona con `rr` — sube y baja sin una tendencia limpia (ver `results/sweep_full_M5.csv`) — lo que descarta que "haga falta barrer un `rr` más alto todavía"; es más compatible con ruido que con una señal real.
 - El drawdown máximo de la mejor combinación es de **36R**, descomunal frente a una expectancy de +0,01R por operación — otra marca típica de sobreajuste, no de edge real.
-- Validado contra los 3 sub-períodos (`scripts/04_run_robustness.py`, splits de ~173 días cada uno): la mejor combinación y sus vecinas más cercanas en la malla dan **positivo en 2 de 3 sub-períodos y negativo en el sub-período central** — ninguna combinación probada sostiene expectancy positiva en los 3 a la vez. Resultados completos en `results/robustness_subperiods.csv`.
+- Validado contra los 3 sub-períodos (`scripts/04_run_robustness.py M5`, splits de ~173 días cada uno): la mejor combinación y sus vecinas más cercanas en la malla dan **positivo en 2 de 3 sub-períodos y negativo en el sub-período central** — ninguna combinación probada sostiene expectancy positiva en los 3 a la vez. Resultados completos en `results/robustness_subperiods_M5.csv`.
 
-**Hallazgo estructural, no un bug:** en promedio el **51%** de las señales generadas (hasta 64% con `periodos_htf_min = 800`) se descartan por "stop del lado incorrecto" (§4.4). Causa: el armado (`armadoVenta`/`armadoCompra`) queda activo indefinidamente hasta que se dispare una señal, pero `resistencia`/`soporte` se recalculan en cada bloque HTF nuevo — si pasan varios bloques entre el armado y la señal, el nivel usado para el stop en el momento de la señal ya no es el mismo que armó originalmente, y con frecuencia queda del lado equivocado. Esto es consecuencia directa de la decisión ya tomada en `spec-estrategia.md` §4.4 (stop = mismo nivel que arma, sin trackear el extremo en formación por separado) interactuando con la regla de armado persistente — vale la pena tenerlo presente como hipótesis de rediseño si se decide seguir iterando sobre la estrategia, aunque no se tocó nada del spec ya aprobado sin volver a pasar por revisión explícita.
+**Hallazgo estructural, no un bug:** en promedio el **51%** de las señales generadas (hasta 64% con `periodos_htf_min = 800`) se descartan por "stop del lado incorrecto" (§4.4). Causa: el armado (`armadoVenta`/`armadoCompra`) queda activo indefinidamente hasta que se dispare una señal, pero `resistencia`/`soporte` se recalculan en cada bloque HTF nuevo — si pasan varios bloques entre el armado y la señal, el nivel usado para el stop en el momento de la señal ya no es el mismo que armó originalmente, y con frecuencia queda del lado equivocado. Esto es consecuencia directa de la decisión ya tomada en `spec-estrategia.md` §4.4 (stop = mismo nivel que arma, sin trackear el extremo en formación por separado) interactuando con la regla de armado persistente — vale la pena tenerlo presente como hipótesis de rediseño si se decide seguir iterando sobre la estrategia, aunque no se tocó nada del spec ya aprobado sin volver a pasar por revisión explícita. Aplica igual de por sí al perfil 1m (misma lógica de armado), independientemente de lo que salga en §9.
 
-**Alcance de esta corrida — lo que NO se probó:** solo `chartTF = M5`. M1, M15 y H1 quedan sin explorar (M1 sigue con historial insuficiente, ver §2.2; M15/H1 tienen historial de sobra pero no se corrieron en este primer barrido).
+**Alcance de esta corrida — lo que NO se probó:** M15 y H1 quedan sin explorar (tienen historial de sobra pero no se corrieron en este barrido). El perfil 1m se corre por separado, ver §9.
 
