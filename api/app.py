@@ -54,7 +54,9 @@ class StartRequest(BaseModel):
     profile: str = "5m"
     magic: int = DEFAULT_MAGIC
     poll_interval_s: int = 10
-    live: bool = False  # False = dry_run (default seguro, ver docs/spec-live-execution.md)
+    live: bool = True  # opera de una contra la cuenta conectada (demo o real -- decision de quien
+                        # loguea la cuenta en MT5, no de esta API). False = dry-run: calcula todo,
+                        # solo loguea, no manda ordenes -- util para validar una config nueva.
     # overrides opcionales sobre el perfil elegido (strategy/profiles.py) --
     # None = usar el default del perfil, sin tocarlo. El panel (Fase 6) los
     # manda solo si el usuario los edito en Configuracion.

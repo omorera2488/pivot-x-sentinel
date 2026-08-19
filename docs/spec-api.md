@@ -35,7 +35,7 @@ Pensada para correr en la misma máquina que la terminal MT5, consultada por el 
 
 ## 4. `/start` y `dry_run`
 
-`POST /start` con `"live": false` (default) arranca el bot en modo simulado — igual que `python execution/scripts/run_bot.py` sin `--live` (ver `docs/spec-live-execution.md`). Mandar `"live": true` hace que el bot mande órdenes reales — la API no agrega ninguna confirmación extra más allá de eso, así que el cuidado de no operar sin querer lo tiene que poner quien llame al endpoint (vos, o el panel de la Fase 6).
+`POST /start` con `"live": true` (default) arranca el bot operando de una contra la cuenta que tengas conectada en MT5 — igual que `python execution/scripts/run_bot.py` sin `--dry-run` (ver `docs/spec-live-execution.md`). Mandar `"live": false` hace que el bot calcule señales/timeouts/concurrencia pero solo loguee, sin mandar órdenes — útil para validar una configuración nueva. Qué cuenta está conectada (demo o real) es decisión de quien loguea la terminal MT5, la API no lo consulta ni lo restringe.
 
 ## 5. Decisiones abiertas
 

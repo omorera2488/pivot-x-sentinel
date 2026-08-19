@@ -218,7 +218,7 @@ async function refresh() {
 }
 
 document.getElementById("btnStart").addEventListener("click", async () => {
-  const pending = loadPendingConfig() || { profile: "5m", symbol: "XAUUSDm", magic: 900001, poll_interval_s: 10, live: false };
+  const pending = loadPendingConfig() || { profile: "5m", symbol: "XAUUSDm", magic: 900001, poll_interval_s: 10, live: true };
   const msg = document.getElementById("msg");
   try {
     document.getElementById("btnStart").disabled = true;

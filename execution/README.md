@@ -2,13 +2,13 @@
 
 Motor de ejecución en vivo contra MT5: conexión, colocación de órdenes límite con SL/TP, vigilancia/cancelación de pendientes invalidados, cierre por tiempo máximo, y reconciliación de concurrencia contra el estado real del bróker. Implementa [docs/spec-live-execution.md](../docs/spec-live-execution.md) al pie de la letra, sobre el motor de [/strategy](../strategy).
 
-> **Sin parámetros validados por backtest** (Fase 3 no encontró edge robusto en M5, ver `docs/spec-backtest.md` §8). Implementado a pedido explícito, corre en `dry_run` por defecto — ver nota al tope de `docs/spec-live-execution.md`.
+> **Sin parámetros validados por backtest** (Fase 3 no encontró edge robusto en M5, ver `docs/spec-backtest.md` §8) — opera igual, a pedido explícito del usuario. Qué cuenta conectar (demo o real) es decisión de quien loguea la terminal MT5, no del código — ver nota al tope de `docs/spec-live-execution.md` y el disclaimer en el README raíz.
 
 ## Uso
 
 ```
-python scripts/run_bot.py --profile 5m --symbol XAUUSDm            # dry-run (default): loguea, no manda ordenes
-python scripts/run_bot.py --profile 5m --symbol XAUUSDm --live     # manda ordenes reales -- solo cuenta demo
+python scripts/run_bot.py --profile 5m --symbol XAUUSDm              # opera de una (default) contra la cuenta conectada
+python scripts/run_bot.py --profile 5m --symbol XAUUSDm --dry-run    # solo calcula y loguea, no manda ordenes
 ```
 
 Requiere una terminal MT5 abierta y logueada (se conecta a la instancia local en ejecución, no gestiona credenciales). `--profile` acepta `1m`/`5m` (o `M1`/`M5`).

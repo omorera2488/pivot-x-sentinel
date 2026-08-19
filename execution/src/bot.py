@@ -19,9 +19,13 @@ con el mercado cerrado), asi que `_bars_between()` consulta el historial
 real via `copy_rates_range` en vez de dividir tiempo transcurrido por la
 duracion nominal de la barra (eso sobre-contaria cualquier fin de semana).
 
-dry_run=True (default): calcula todo pero NUNCA llama a order_send/
-order_remove — solo loguea que haria. Poner dry_run=False para operar de
-verdad (solo probado contra cuenta demo).
+dry_run: si True, calcula todo (señales, timeouts, concurrencia) pero solo
+loguea lo que haria en vez de llamar a order_send/order_remove -- util para
+validar una configuracion nueva antes de confiarle dinero real. Default
+False: opera de una. Que cuenta (demo o real) y si corre en dry_run o en
+vivo es una decision de quien conecta la cuenta a MT5 y arranca el bot, no
+del codigo -- no hay ningun chequeo aca que distinga demo de real. Quien
+opera este bot asume el riesgo (ver disclaimer en README.md).
 """
 from __future__ import annotations
 
@@ -46,7 +50,7 @@ MAX_EVENTS = 1000  # tope del log en memoria -- ver Fase 5 (api/app.py lee esto)
 class LiveExecutionBot:
     def __init__(self, symbol: str, profile: str, magic: int,
                  poll_interval_s: int = 10, lookback_buckets: int = 3,
-                 dry_run: bool = True, **param_overrides):
+                 dry_run: bool = False, **param_overrides):
         self.symbol = symbol
         self.profile_name = normalize_profile_name(profile)
         self.magic = magic

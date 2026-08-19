@@ -101,15 +101,12 @@
     </label>
   </div>
 
-  <details open>
-    <summary>Riesgo — operar en vivo</summary>
-    <div class="config-grid" style="margin-top:12px;">
-      <label class="setting" style="border-color:#7f1d1d;">
-        <b><input type="checkbox" id="live"> Operar en vivo (manda órdenes reales)</b>
-        <small class="bad">Desactivado (dry-run) por defecto: el bot calcula todo pero solo loguea lo que haría. Usar solo en cuenta demo, y solo si entendés que no hay un edge validado por backtest todavía (docs/spec-backtest.md §8).</small>
-      </label>
-    </div>
-  </details>
+  <div class="config-grid" style="margin-bottom:16px;">
+    <label class="setting">
+      <b><input type="checkbox" id="live"> Operar en vivo (manda órdenes reales)</b>
+      <small>Activado por defecto: el bot opera de una contra la cuenta que tengas conectada en MT5, sea demo o real -- esa elección es tuya, se hace al loguear la cuenta en la terminal, no acá. Desmarcá esto si por ahora solo querés que calcule señales y loguee qué haría, sin mandar ninguna orden (útil para validar un cambio de configuración). Operar conlleva riesgo de pérdida real de capital.</small>
+    </label>
+  </div>
 
   <div class="toolbar" style="margin-top:18px;">
     <button type="submit" class="start">Guardar cambios y detener bot</button>
@@ -166,7 +163,7 @@ async function init() {
   if (pending) {
     fillForm(pending);
   } else {
-    fillForm({ profile: "5m", symbol: "XAUUSDm", magic: 900001, poll_interval_s: 10, live: false, ...profileDefaults["5m"] });
+    fillForm({ profile: "5m", symbol: "XAUUSDm", magic: 900001, poll_interval_s: 10, live: true, ...profileDefaults["5m"] });
   }
 
   try {

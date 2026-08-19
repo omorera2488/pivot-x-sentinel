@@ -21,12 +21,12 @@ Docs interactivas (Swagger) en `http://127.0.0.1:8000/docs` — vienen gratis co
 ```bash
 curl -s http://127.0.0.1:8000/account
 curl -s -X POST http://127.0.0.1:8000/start -H "Content-Type: application/json" \
-  -d '{"symbol":"XAUUSDm","profile":"5m","live":false}'
+  -d '{"symbol":"XAUUSDm","profile":"5m"}'
 curl -s http://127.0.0.1:8000/status
 curl -s http://127.0.0.1:8000/events
 curl -s -X POST http://127.0.0.1:8000/stop
 ```
 
-`live:false` (default) arranca el bot en `dry_run` — no manda órdenes reales. Ver `docs/spec-api.md` §4.
+`live` es `true` por default — el bot manda órdenes reales contra lo que tengas conectado en MT5 (demo o real, esa elección se hace al loguear la cuenta en la terminal). Pasar `"live":false` si por ahora solo querés que calcule y loguee, sin operar. Ver `docs/spec-api.md` §4.
 
 Solo bindea a localhost, sin autenticación — pensada para uso personal en la misma máquina que la terminal MT5 (`docs/spec-api.md` §3).

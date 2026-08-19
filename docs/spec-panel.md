@@ -40,6 +40,6 @@ Esto es deliberadamente simple (localStorage, no una tabla de configuración en 
 
 ## 5. Decisiones abiertas
 
-1. **`dry_run`/`live` en Configuración**: el checkbox "Operar en vivo" existe y funciona, con advertencia visible, pero no tiene una confirmación extra tipo modal — el cuidado de no activarlo por accidente queda en quien usa el panel.
+1. **`dry_run`/`live` en Configuración**: "Operar en vivo" está tildado por default (el bot opera de una) — desmarcarlo pasa a modo simulado (calcula y loguea, no manda órdenes). No hay confirmación extra tipo modal al tildarlo; el cuidado de qué cuenta conectar y cuándo operar en vivo es de quien usa el panel, no del código (ver disclaimer en el README raíz).
 2. **Un solo bot a la vez** (heredado de la Fase 5, `/start` devuelve 409 si ya hay uno corriendo) — correr 1m y 5m en simultáneo necesitaría permitir múltiples instancias, no contemplado.
 3. **Responsive**: pensado para escritorio (como la referencia); en pantallas angostas los grids caen a una columna pero no se probó exhaustivamente en mobile.

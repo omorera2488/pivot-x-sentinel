@@ -1,8 +1,8 @@
 # Motor de ejecución en vivo — MT5 (Fase 4)
 
-> **Estado: IMPLEMENTADO en `/execution`, corriendo contra cuenta demo real en `dry_run` (no manda órdenes) — sin parámetros validados por backtest.** La Fase 3 corrió el barrido completo sobre M5 y no encontró una combinación de parámetros con edge robusto (`docs/spec-backtest.md §8`). El usuario decidió explícitamente avanzar con la implementación de todos modos, dejando la validez de la señal (qué parámetros operar, o si el armado persistente necesita rediseño) como algo a resolver aparte — este documento y el código que implementa cubren el *cómo* ejecutar, no el *con qué parámetros* ni si conviene operar hoy. **No poner `dry_run=False` sin haber resuelto eso.**
+> **Estado: IMPLEMENTADO en `/execution`, opera en vivo por defecto.** La Fase 3 corrió el barrido completo sobre M5 y no encontró una combinación de parámetros con edge robusto (`docs/spec-backtest.md §8`). El usuario decidió explícitamente avanzar con la implementación y operar de todos modos, sin esperar esa validación — la señal (qué parámetros usar, si el armado persistente necesita rediseño) sigue siendo una hipótesis, no algo confirmado por backtest. Qué cuenta usar (demo o real) y si operar en vivo o en `dry_run` es una decisión de quien conecta la cuenta a MT5 y arranca el bot — el código no distingue ni restringe por tipo de cuenta. Ver el disclaimer de riesgo en `README.md`.
 
-**Objetivo:** la misma lógica de `spec-estrategia.md`, corriendo en tiempo real contra un terminal MT5, en cuenta demo, sin intervención manual.
+**Objetivo:** la misma lógica de `spec-estrategia.md`, corriendo en tiempo real contra un terminal MT5, sin intervención manual.
 
 ---
 
@@ -140,10 +140,10 @@ A diferencia del backtest (que cierra a `close[j]` por definición, `spec-estrat
 
 ## 10. Alcance de esta fase
 
-- Cuenta **demo únicamente** — el criterio de aceptación original de la Fase 4 exige "resultados consistentes con el backtest de la Fase 3", que hoy no existen (§ nota al inicio). No hay ninguna base para operar en real todavía, independientemente de esta especificación.
+- **Tipo de cuenta (demo o real): decisión de quien opera el bot, no de esta especificación ni del código.** El motor no consulta ni distingue `account_info().trade_mode` en ningún punto — hace exactamente lo mismo contra cualquier cuenta que la terminal MT5 tenga conectada. El criterio de aceptación original de la Fase 4 ("resultados consistentes con el backtest de la Fase 3") sigue sin cumplirse — no hay edge validado — pero eso no bloquea nada a nivel código, es información para que quien opera decida con conocimiento de causa.
 - Tamaño de posición: lote fijo (`fixedLot`), igual que en `spec-backtest.md` §3.4 — el dimensionamiento por riesgo variable sigue siendo tema de la Fase 8, no de esta.
 - Un solo símbolo por instancia del bot (Oro). Multi-símbolo no está en el alcance de esta fase.
-- **`dry_run=True` por defecto** (`execution/src/bot.py`, `LiveExecutionBot`): calcula señales, timeouts y concurrencia normalmente, pero loguea en vez de mandar `order_send`/`order_remove`. Hay que pasar `--live` explícitamente (`execution/scripts/run_bot.py`) para que mande órdenes reales — incluso en demo, seguir viendo qué haría antes de dejarlo mandar órdenes de verdad.
+- **`dry_run=False` por defecto** (`execution/src/bot.py`, `LiveExecutionBot`): el bot manda órdenes reales de una. Pasar `--dry-run` (`execution/scripts/run_bot.py`) o desmarcar "Operar en vivo" en el panel calcula señales/timeouts/concurrencia igual pero solo loguea, sin mandar `order_send`/`order_remove` — sirve para validar una configuración nueva antes de operar con ella.
 
 ---
 
