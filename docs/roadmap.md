@@ -100,13 +100,15 @@ A pedido explícito del usuario, se implementó **sin esperar un resultado valid
 
 ---
 
-## Fase 5 — Capa de datos / API local
+## Fase 5 — Capa de datos / API local ✅ COMPLETADA
+
+Especificación: [docs/spec-api.md](spec-api.md). Implementada en [/api](../api) (FastAPI, mismo proceso que el bot).
 
 **Objetivo:** exponer el estado del bot para que el panel lo consuma.
 
 **Debe incluir:** endpoints para balance/equity, posiciones abiertas y pendientes, histórico de operaciones, log de eventos, y control de iniciar/detener el bot.
 
-**Criterio de aceptación:** se puede consultar el estado completo del bot desde afuera (ej. con una herramienta como curl o Postman) sin necesidad de abrir el panel.
+**Criterio de aceptación:** se puede consultar el estado completo del bot desde afuera (ej. con una herramienta como curl o Postman) sin necesidad de abrir el panel. ✅ Probado en vivo contra la cuenta demo: `/status`, `/start`, `/account`, `/positions`, `/orders`, `/history`, `/events`, `/stop` — los 8 endpoints responden correctamente con curl.
 
 ---
 
@@ -152,7 +154,7 @@ A pedido explícito del usuario, se implementó **sin esperar un resultado valid
 | 2 — Especificación funcional | ✅ Completada |
 | 3 — Backtest de Oro | ❌ Corrido — sin edge robusto en M5, ver spec-backtest.md §8 |
 | 4 — Ejecución en vivo | ✅ Implementada, `dry_run` por defecto (sin parámetros validados de Fase 3) |
-| 5 — API local | ⏳ Pendiente |
+| 5 — API local | ✅ Completada |
 | 6 — Panel web | ⏳ Pendiente |
 | 7 — Ejecutable Windows | ⏳ Pendiente |
 | 8 — Validación y checklist a real | ⏳ Pendiente |

@@ -26,6 +26,7 @@ verdad (solo probado contra cuenta demo).
 from __future__ import annotations
 
 import time as time_mod
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -35,15 +36,11 @@ from strategy.engine import StrategyParams
 from strategy.live_signal import LiveSignalEngine
 from strategy.profiles import get_profile, normalize_profile_name
 
-from .mt5_utils import connect, select_symbol, measure_broker_offset_seconds, resolve_filling_mode
+from .mt5_utils import connect, select_symbol, measure_broker_offset_seconds, resolve_filling_mode, mt5_lock
 
 TIMEFRAME_BY_PROFILE = {"1m": mt5.TIMEFRAME_M1, "5m": mt5.TIMEFRAME_M5}
 SECONDS_BY_PROFILE = {"1m": 60, "5m": 300}
-
-
-def _log(msg: str) -> None:
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{ts} UTC] {msg}", flush=True)
+MAX_EVENTS = 1000  # tope del log en memoria -- ver Fase 5 (api/app.py lee esto)
 
 
 class LiveExecutionBot:
@@ -67,6 +64,16 @@ class LiveExecutionBot:
         self._offset_seconds: float = 0.0
         self._running = False
 
+        # log de eventos en memoria -- Fase 5 (api/app.py) lo expone por HTTP
+        # sin necesitar que el bot escriba a disco (el proceso de la API y el
+        # del bot son el mismo, decision de Fase 0).
+        self.events: deque = deque(maxlen=MAX_EVENTS)
+
+    def _log(self, msg: str) -> None:
+        ts = datetime.now(timezone.utc)
+        print(f"[{ts:%Y-%m-%d %H:%M:%S} UTC] {msg}", flush=True)
+        self.events.append({"time": ts.isoformat(), "msg": msg})
+
     # ---- arranque -----------------------------------------------------
 
     def connect(self) -> None:
@@ -75,10 +82,10 @@ class LiveExecutionBot:
         self._filling_mode = resolve_filling_mode(self.symbol)
         self._offset_seconds = measure_broker_offset_seconds(self.symbol)
         acc = mt5.account_info()
-        _log(f"Conectado: cuenta {acc.login} server {acc.server} simbolo {self.symbol} "
-             f"perfil {self.profile_name} magic {self.magic} dry_run={self.dry_run}")
-        _log(f"Offset servidor vs UTC: {self._offset_seconds:+.2f}s | "
-             f"digits={info.digits} point={info.point} filling_mode={self._filling_mode}")
+        self._log(f"Conectado: cuenta {acc.login} server {acc.server} simbolo {self.symbol} "
+                  f"perfil {self.profile_name} magic {self.magic} dry_run={self.dry_run}")
+        self._log(f"Offset servidor vs UTC: {self._offset_seconds:+.2f}s | "
+                  f"digits={info.digits} point={info.point} filling_mode={self._filling_mode}")
 
     def replay_startup(self) -> None:
         """Reconstruye armado/bloque HTF sobre historial reciente, SIN
@@ -88,7 +95,7 @@ class LiveExecutionBot:
         start = now - timedelta(minutes=lookback_min + 2 * self.bar_seconds / 60)
         rates = mt5.copy_rates_range(self.symbol, self.timeframe, start, now)
         if rates is None or len(rates) < 2:
-            _log("Replay: historial insuficiente para el lookback pedido -- arranca en calentamiento (igual que backtest).")
+            self._log("Replay: historial insuficiente para el lookback pedido -- arranca en calentamiento (igual que backtest).")
             self.signal_engine = LiveSignalEngine(self.params)
             return
 
@@ -98,7 +105,7 @@ class LiveExecutionBot:
             self.signal_engine.process_bar(int(r["time"]) - round(self._offset_seconds),
                                             float(r["high"]), float(r["low"]), float(r["close"]))
         self._last_processed_time = int(closed[-1]["time"])
-        _log(f"Replay: {len(closed)} velas cerradas procesadas ({lookback_min}min de lookback). "
+        self._log(f"Replay: {len(closed)} velas cerradas procesadas ({lookback_min}min de lookback). "
              f"armadoVenta={self.signal_engine.armado_venta} armadoCompra={self.signal_engine.armado_compra}")
 
     # ---- estado real del broker ----------------------------------------
@@ -167,29 +174,29 @@ class LiveExecutionBot:
                     expired, reason = True, f"caduco por validBars ({bars_since_born} barras reales)"
 
             if expired:
-                _log(f"Pendiente #{o.ticket} ({'venta' if d < 0 else 'compra'}) expirada: {reason}")
+                self._log(f"Pendiente #{o.ticket} ({'venta' if d < 0 else 'compra'}) expirada: {reason}")
                 self._cancel_order(o.ticket)
 
     def _watch_open(self, raw_bar_time: int) -> None:
         for p in self.my_positions():
             bars_since_open = self._bars_between(int(p.time), raw_bar_time)
             if bars_since_open >= self.params.max_bars_trade:
-                _log(f"Posicion #{p.ticket} cerrada por tiempo maximo ({bars_since_open} barras reales)")
+                self._log(f"Posicion #{p.ticket} cerrada por tiempo maximo ({bars_since_open} barras reales)")
                 self._close_position(p)
 
     # ---- envio de ordenes reales (o simuladas si dry_run) ---------------
 
     def _cancel_order(self, ticket: int) -> None:
         if self.dry_run:
-            _log(f"[dry_run] cancelaria orden #{ticket}")
+            self._log(f"[dry_run] cancelaria orden #{ticket}")
             return
         res = mt5.order_send({"action": mt5.TRADE_ACTION_REMOVE, "order": ticket})
         if res is None or res.retcode != mt5.TRADE_RETCODE_DONE:
-            _log(f"AVISO: no se pudo cancelar #{ticket}: {res}")
+            self._log(f"AVISO: no se pudo cancelar #{ticket}: {res}")
 
     def _close_position(self, p) -> None:
         if self.dry_run:
-            _log(f"[dry_run] cerraria posicion #{p.ticket} a mercado")
+            self._log(f"[dry_run] cerraria posicion #{p.ticket} a mercado")
             return
         tick = mt5.symbol_info_tick(self.symbol)
         close_type = mt5.ORDER_TYPE_SELL if p.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY
@@ -200,12 +207,12 @@ class LiveExecutionBot:
                "comment": "pxs|timeout"}
         res = mt5.order_send(req)
         if res is None or res.retcode != mt5.TRADE_RETCODE_DONE:
-            _log(f"AVISO: no se pudo cerrar #{p.ticket}: {res}")
+            self._log(f"AVISO: no se pudo cerrar #{p.ticket}: {res}")
 
     def _place_order(self, direction: int, entry: float, stop: float, target: float) -> None:
         tipo = "venta" if direction < 0 else "compra"
         if self.dry_run:
-            _log(f"[dry_run] colocaria {tipo} limite: entry={entry:.3f} sl={stop:.3f} tp={target:.3f}")
+            self._log(f"[dry_run] colocaria {tipo} limite: entry={entry:.3f} sl={stop:.3f} tp={target:.3f}")
             return
         req = {
             "action": mt5.TRADE_ACTION_PENDING,
@@ -222,9 +229,9 @@ class LiveExecutionBot:
         }
         res = mt5.order_send(req)
         if res is None or res.retcode != mt5.TRADE_RETCODE_DONE:
-            _log(f"AVISO: orden {tipo} rechazada: {res}")
+            self._log(f"AVISO: orden {tipo} rechazada: {res}")
         else:
-            _log(f"Orden {tipo} colocada: #{res.order} entry={entry:.3f} sl={stop:.3f} tp={target:.3f}")
+            self._log(f"Orden {tipo} colocada: #{res.order} entry={entry:.3f} sl={stop:.3f} tp={target:.3f}")
 
     # ---- deteccion de vela cerrada + procesamiento por barra ------------
 
@@ -252,11 +259,11 @@ class LiveExecutionBot:
         signal = self.signal_engine.process_bar(t, high, low, close)
         if signal.dir is not None:
             if not signal.valido:
-                _log(f"Señal descartada: stop del lado incorrecto (dir={signal.dir})")
+                self._log(f"Señal descartada: stop del lado incorrecto (dir={signal.dir})")
             else:
                 activos = self._concurrency_count(signal.dir)
                 if activos >= self.params.max_concurrent_por_direccion:
-                    _log(f"Señal descartada: limite de concurrencia ({activos}/{self.params.max_concurrent_por_direccion})")
+                    self._log(f"Señal descartada: limite de concurrencia ({activos}/{self.params.max_concurrent_por_direccion})")
                 else:
                     self._place_order(signal.dir, signal.entry, signal.stop, signal.target)
 
@@ -276,23 +283,24 @@ class LiveExecutionBot:
         bi = 0
         while self._running:
             try:
-                n = self.poll_once()
+                with mt5_lock:  # serializa contra la API (Fase 5), mismo proceso
+                    n = self.poll_once()
                 if n:
-                    _log(f"Procesadas {n} vela(s) nueva(s).")
+                    self._log(f"Procesadas {n} vela(s) nueva(s).")
                 bi = 0
                 time_mod.sleep(self.poll_interval_s)
             except KeyboardInterrupt:
-                _log("Detenido por el usuario.")
+                self._log("Detenido por el usuario.")
                 break
             except Exception as e:  # reconexion con backoff, spec #9
                 wait = backoff[min(bi, len(backoff) - 1)]
-                _log(f"Error en el ciclo ({e!r}), reintentando en {wait}s...")
+                self._log(f"Error en el ciclo ({e!r}), reintentando en {wait}s...")
                 time_mod.sleep(wait)
                 bi += 1
                 try:
                     self.connect()
                 except Exception as e2:
-                    _log(f"Reconexion fallida: {e2!r}")
+                    self._log(f"Reconexion fallida: {e2!r}")
 
     def stop(self) -> None:
         self._running = False

@@ -6,9 +6,18 @@ de estrategia (eso es /strategy).
 """
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timezone
 
 import MetaTrader5 as mt5
+
+# El paquete MetaTrader5 no garantiza ser thread-safe si dos llamadas pisan
+# el canal de comunicacion con la terminal al mismo tiempo. Desde la Fase 5
+# hay dos threads potencialmente golpeando MT5 a la vez (el loop del bot y
+# los handlers de la API, que corren en el mismo proceso -- decision de
+# Fase 0). Un lock global simple evita que se pisen; no es una API de alta
+# concurrencia, no hace falta nada mas fino.
+mt5_lock = threading.Lock()
 
 
 def connect() -> None:
