@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>pivot-x-sentinel · Configuración</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
 <main class="narrower">
@@ -54,7 +54,7 @@
     </label>
     <label class="setting">
       <b>Bloque HTF (minutos)</b>
-      <small>Duración del bloque de referencia — el bloque anterior YA CERRADO, no el que se está formando (spec-estrategia.md §3.3).</small>
+      <small>Duración del bloque de referencia — el bloque que se está formando (paridad con TradingView, spec-estrategia.md §3.3).</small>
       <input type="number" id="periodos_htf_min" min="1" step="1">
     </label>
 
@@ -116,7 +116,7 @@
 </section>
 
 </main>
-<script src="app.js"></script>
+<script src="app.js?v=2"></script>
 <script>
 const FIELDS = ["symbol", "magic", "poll_interval_s", "live", "ema_periods", "periodos_htf_min",
   "buf_bp", "rr", "max_concurrent_por_direccion", "valid_bars", "orden_viva", "max_bars_trade",
