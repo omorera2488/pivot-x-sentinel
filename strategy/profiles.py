@@ -51,11 +51,18 @@ PROFILES: dict[str, StrategyParams] = {"1m": PERFIL_1M, "5m": PERFIL_5M}
 _ALIASES = {"1m": "1m", "m1": "1m", "1": "1m", "5m": "5m", "m5": "5m", "5": "5m"}
 
 
-def get_profile(name: str, **overrides) -> StrategyParams:
-    """Devuelve el StrategyParams del perfil pedido ('1m'/'M1' o '5m'/'M5'),
-    con overrides opcionales (ej. get_profile('5m', rr=2.0))."""
+def normalize_profile_name(name: str) -> str:
+    """'1m'/'M1'/'1' -> '1m', '5m'/'M5'/'5' -> '5m'. Un solo lugar para el
+    mapeo de alias, lo usan get_profile() y execution/ (para elegir timeframe
+    de grafico)."""
     key = _ALIASES.get(name.strip().lower())
     if key is None:
         raise ValueError(f"Perfil desconocido: {name!r} (opciones: {list(_ALIASES)})")
-    base = PROFILES[key]
+    return key
+
+
+def get_profile(name: str, **overrides) -> StrategyParams:
+    """Devuelve el StrategyParams del perfil pedido ('1m'/'M1' o '5m'/'M5'),
+    con overrides opcionales (ej. get_profile('5m', rr=2.0))."""
+    base = PROFILES[normalize_profile_name(name)]
     return replace(base, **overrides) if overrides else base

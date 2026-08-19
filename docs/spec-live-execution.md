@@ -1,6 +1,6 @@
 # Motor de ejecución en vivo — MT5 (Fase 4)
 
-> **Estado: PROVISIONAL.** La Fase 3 corrió el barrido completo sobre M5 y **no encontró una combinación de parámetros con edge robusto** (ver [docs/spec-backtest.md §8](spec-backtest.md)). Esta especificación define *cómo* ejecutar en vivo la lógica de `spec-estrategia.md`, no *con qué parámetros* — eso sigue sin resolverse. Si más adelante el rediseño del armado persistente (hipótesis planteada en `spec-backtest.md §8`) u otro timeframe cambian la lógica de señal, este documento se revisa. Lo que no cambia con eso es la arquitectura de conexión/ejecución/reconciliación que sigue.
+> **Estado: IMPLEMENTADO en `/execution`, corriendo contra cuenta demo real en `dry_run` (no manda órdenes) — sin parámetros validados por backtest.** La Fase 3 corrió el barrido completo sobre M5 y no encontró una combinación de parámetros con edge robusto (`docs/spec-backtest.md §8`). El usuario decidió explícitamente avanzar con la implementación de todos modos, dejando la validez de la señal (qué parámetros operar, o si el armado persistente necesita rediseño) como algo a resolver aparte — este documento y el código que implementa cubren el *cómo* ejecutar, no el *con qué parámetros* ni si conviene operar hoy. **No poner `dry_run=False` sin haber resuelto eso.**
 
 **Objetivo:** la misma lógica de `spec-estrategia.md`, corriendo en tiempo real contra un terminal MT5, en cuenta demo, sin intervención manual.
 
@@ -95,7 +95,7 @@ mis_abiertas   = mt5.positions_get(symbol=symbol) filtradas por magic == MAGIC_N
 
 Esto reemplaza a los arrays `pending`/`open` en memoria que usa el motor de backtest (`spec-backtest.md`, `strategy/engine.py`) — en vivo, la lista de pendientes/abiertas ES la que devuelve el bróker, no una que el proceso mantenga por su cuenta. El **conteo de concurrencia** (`spec-estrategia.md` §6) se calcula sobre estas listas reales, no sobre una copia en memoria que podría desincronizarse si una orden se llenó, canceló o cerró por fuera del bot (ej. el usuario la tocó manualmente, o el bróker la cerró por stop-out).
 
-Los metadatos que MT5 no guarda pero el motor necesita para aplicar `spec-estrategia.md` (ej. `bornBar`/hora exacta de la señal, para calcular `caduca`/`tooLong`) se recuperan del campo `comment` de la orden/posición (§5) — es la única fuente persistente disponible sin agregar una base de datos externa. Si el `comment` no alcanza a codificar todo lo necesario (límite de longitud de MT5), se completa con un registro local simple (json/sqlite en `/execution`, a definir en la implementación) indexado por `ticket`, tratado como **cache reconstruible** — si se pierde, se puede re-derivar aproximadamente del `time_setup` de la orden y del replay de §4, nunca es la única copia de algo crítico.
+**Corrección encontrada al implementar (`execution/src/bot.py`):** este borrador asumía que iba a hacer falta un registro local aparte (json/sqlite) para los metadatos que "MT5 no guarda". Resultó innecesario — el objeto de la orden pendiente (`orders_get()`) y el de la posición abierta (`positions_get()`) ya traen todo lo que hace falta de forma nativa: `time_setup` (posición: `time`) es exactamente el `bornBar`/hora de la señal, `sl`/`tp` son el stop/target congelados, `type` da la dirección, `price_open` es el entry. No hay ningún dato crítico que MT5 no persista ya por su cuenta. El campo `comment` (`"pxs|{perfil}"`) queda solo como etiqueta legible en el terminal — nada crítico se reconstruye parseándolo. Esto simplifica la reconciliación: no hay una cache aparte que pueda desincronizarse, todo sale de la misma consulta a `orders_get()`/`positions_get()` de la que ya depende el conteo de concurrencia.
 
 ---
 
@@ -139,6 +139,7 @@ A diferencia del backtest (que cierra a `close[j]` por definición, `spec-estrat
 - Cuenta **demo únicamente** — el criterio de aceptación original de la Fase 4 exige "resultados consistentes con el backtest de la Fase 3", que hoy no existen (§ nota al inicio). No hay ninguna base para operar en real todavía, independientemente de esta especificación.
 - Tamaño de posición: lote fijo (`fixedLot`), igual que en `spec-backtest.md` §3.4 — el dimensionamiento por riesgo variable sigue siendo tema de la Fase 8, no de esta.
 - Un solo símbolo por instancia del bot (Oro). Multi-símbolo no está en el alcance de esta fase.
+- **`dry_run=True` por defecto** (`execution/src/bot.py`, `LiveExecutionBot`): calcula señales, timeouts y concurrencia normalmente, pero loguea en vez de mandar `order_send`/`order_remove`. Hay que pasar `--live` explícitamente (`execution/scripts/run_bot.py`) para que mande órdenes reales — incluso en demo, seguir viendo qué haría antes de dejarlo mandar órdenes de verdad.
 
 ---
 

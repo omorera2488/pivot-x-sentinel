@@ -81,9 +81,11 @@ Especificación: [docs/spec-backtest.md](spec-backtest.md). Motor implementado e
 
 ---
 
-## Fase 4 — Motor de ejecución en vivo (MT5) ⏳ SPEC PROVISIONAL
+## Fase 4 — Motor de ejecución en vivo (MT5) ✅ IMPLEMENTADA (sin parámetros validados)
 
-Especificación: [docs/spec-live-execution.md](spec-live-execution.md) — define la arquitectura de conexión/ejecución/reconciliación contra MT5, agnóstica de bróker. Marcada **provisional**: la Fase 3 no encontró una combinación de parámetros con edge validado (ver `spec-backtest.md` §8), así que esta fase especifica el *cómo ejecutar*, no el *con qué parámetros* — eso sigue abierto.
+Especificación: [docs/spec-live-execution.md](spec-live-execution.md). Implementado en [/execution](../execution) sobre el motor de [/strategy](../strategy) (`strategy/live_signal.py`, validado bit a bit contra el motor batch). Probado en vivo contra la cuenta demo (conexión, replay de arranque, un ciclo de poll) en `dry_run` — sin mandar órdenes reales.
+
+A pedido explícito del usuario, se implementó **sin esperar un resultado validado de la Fase 3** (que no encontró edge robusto en M5, `spec-backtest.md` §8). El motor corre en `dry_run=True` por defecto — pasar `--live` manda órdenes reales, y no hay base para hacerlo todavía más allá de probar que el mecanismo funciona.
 
 **Objetivo:** la misma lógica validada en la Fase 3, corriendo en tiempo real contra el terminal MT5, en cuenta demo.
 
@@ -149,7 +151,7 @@ Especificación: [docs/spec-live-execution.md](spec-live-execution.md) — defin
 | 1 — Repositorio y esqueleto | ✅ Completada |
 | 2 — Especificación funcional | ✅ Completada |
 | 3 — Backtest de Oro | ❌ Corrido — sin edge robusto en M5, ver spec-backtest.md §8 |
-| 4 — Ejecución en vivo | ⏳ Spec provisional (sin parámetros validados de Fase 3) |
+| 4 — Ejecución en vivo | ✅ Implementada, `dry_run` por defecto (sin parámetros validados de Fase 3) |
 | 5 — API local | ⏳ Pendiente |
 | 6 — Panel web | ⏳ Pendiente |
 | 7 — Ejecutable Windows | ⏳ Pendiente |

@@ -16,6 +16,8 @@ import numpy as np
 import pandas as pd
 import MetaTrader5 as mt5
 
+from execution.src.mt5_utils import find_gold_symbols  # noqa: F401 (reexport, ver nota abajo)
+
 TIMEFRAME_MAP = {
     "M1": mt5.TIMEFRAME_M1,
     "M5": mt5.TIMEFRAME_M5,
@@ -31,14 +33,6 @@ CHUNK_DAYS_BY_TF = {
     "H1": 1200,
     "D1": 3650,
 }
-
-
-def find_gold_symbols() -> list[str]:
-    """Busca simbolos que contengan 'XAU' en el broker conectado."""
-    symbols = mt5.symbols_get()
-    if symbols is None:
-        return []
-    return sorted(s.name for s in symbols if "XAU" in s.name.upper())
 
 
 def download_history(symbol: str, timeframe: str, max_chunks: int = 60) -> pd.DataFrame:

@@ -16,6 +16,7 @@ Uso:
 Sale con exit code 0 y "TODO OK" si las 4 reglas se cumplen, o levanta
 AssertionError senalando cual regla fallo.
 """
+import math
 import sys
 from pathlib import Path
 
@@ -25,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, para 
 
 from strategy.engine import StrategyParams, run_backtest, bucket_levels
 from strategy.costs import BrokerCosts
+from strategy.live_signal import LiveSignalEngine
 
 ZERO_COST = BrokerCosts(
     point=1.0, contract_size=1.0, tick_value=1.0,
@@ -212,6 +214,55 @@ def test_f_entrada_viva():
     print("  F) entradaViva: llenado en la EMA actual + target recalculado al riesgo real: OK")
 
 
+def test_g_live_signal_matches_batch():
+    # Fase 4: el motor incremental (live_signal.py) tiene que generar
+    # EXACTAMENTE las mismas señales que el motor batch (engine.py) sobre la
+    # misma secuencia de barras -- si no, el bot en vivo operaria distinto de
+    # lo que valida el backtest. Serie sintetica con vaivenes (mezcla de dos
+    # senos de distinto periodo) para forzar varios cruces EMA y varios
+    # cierres de bloque HTF, sin depender de datos reales ni de MT5.
+    n = 1200
+    t = np.arange(n, dtype=float)
+    close = 2000.0 + 15.0 * np.sin(t / 23.0) + 6.0 * np.sin(t / 7.0 + 1.3)
+    high = close + 1.5
+    low = close - 1.5
+    time_utc = (np.arange(n) * 5 * 60).astype("int64")  # velas de 5 min
+    time_server = time_utc.copy()
+    open_ = close.copy()
+    spread_pts = np.zeros(n)
+
+    params = StrategyParams(
+        ema_periods=12, periodos_htf_min=35, buf_bp=0.4, rr=1.0,
+        max_concurrent_por_direccion=99, valid_bars=10, orden_viva=True,
+        max_bars_trade=500, fixed_lot=0.01,
+    )
+
+    batch_log = []
+    run_backtest(time_utc, time_server, open_, high, low, close, spread_pts,
+                 params, ZERO_COST, signal_log=batch_log)
+    assert len(batch_log) > 5, "la serie sintetica deberia generar varias señales -- si no, el test no prueba nada"
+
+    live = LiveSignalEngine(params)
+    live_log = []
+    for i in range(n):
+        r = live.process_bar(int(time_utc[i]), float(high[i]), float(low[i]), float(close[i]))
+        if r.dir is not None:
+            live_log.append({"bar": i, "dir": r.dir, "entry": r.entry, "stop": r.stop,
+                              "target": r.target, "valido": r.valido})
+
+    assert len(live_log) == len(batch_log), \
+        f"cantidad de señales distinta: batch={len(batch_log)} vivo={len(live_log)}"
+    for b, l in zip(batch_log, live_log):
+        assert b["bar"] == l["bar"] and b["dir"] == l["dir"] and b["valido"] == l["valido"], \
+            f"señal distinta en bar {b['bar']}: batch={b} vivo={l}"
+        assert math.isclose(b["entry"], l["entry"], rel_tol=1e-9)
+        assert math.isclose(b["stop"], l["stop"], rel_tol=1e-9)
+        if b["valido"]:
+            assert math.isclose(b["target"], l["target"], rel_tol=1e-9)
+
+    print(f"  G) motor incremental (live_signal) == motor batch (engine): OK ({len(batch_log)} señales comparadas)")
+
+
 def test_e_profiles():
     from strategy.profiles import get_profile
 
@@ -245,4 +296,5 @@ if __name__ == "__main__":
     test_d_concurrency_limit_blocks_second_signal()
     test_e_profiles()
     test_f_entrada_viva()
-    print("\nTODO OK — las 4 reglas mecanicas se cumplen + seleccion de perfil + entradaViva OK.")
+    test_g_live_signal_matches_batch()
+    print("\nTODO OK — motor batch validado + motor incremental (Fase 4) equivalente.")

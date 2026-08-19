@@ -10,10 +10,11 @@ from pathlib import Path
 
 import MetaTrader5 as mt5
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))       # backtests/, para "import src"
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))       # repo root, para "import execution"
 
-from src.download import find_gold_symbols, download_history, save_history
-from src.offset import measure_broker_offset_seconds
+from src.download import download_history, save_history
+from execution.src.mt5_utils import find_gold_symbols, measure_broker_offset_seconds
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 

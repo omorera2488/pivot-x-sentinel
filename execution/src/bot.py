@@ -1,0 +1,264 @@
+"""Motor de ejecucion en vivo — docs/spec-live-execution.md.
+
+Un LiveExecutionBot por simbolo+perfil. El bucle principal (`run`) detecta
+velas cerradas nuevas por polling, las procesa una a una a traves del motor
+de señal incremental (strategy.live_signal), coloca ordenes limite reales
+con SL/TP adjuntos, vigila y cancela pendientes invalidados, cierra
+posiciones por tiempo maximo, y calcula el limite de concurrencia contra
+ordenes/posiciones REALES del broker — nunca contra una copia en memoria
+(docs/spec-live-execution.md #1).
+
+Nota sobre metadatos: a diferencia de lo que asumia el borrador de la spec
+(#6), MT5 SI guarda todo lo que hace falta directamente en la orden/posicion
+(`time_setup`/`time` = born/open, `sl`, `tp`, `price_open`, `type` = direccion)
+— no hace falta un registro local aparte para la mecanica del ciclo de vida.
+El `comment` se usa solo como etiqueta legible en el terminal, no se
+reconstruye nada critico a partir de el.
+
+dry_run=True (default): calcula todo pero NUNCA llama a order_send/
+order_remove — solo loguea que haria. Poner dry_run=False para operar de
+verdad (solo probado contra cuenta demo).
+"""
+from __future__ import annotations
+
+import time as time_mod
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+
+import MetaTrader5 as mt5
+
+from strategy.engine import StrategyParams
+from strategy.live_signal import LiveSignalEngine
+from strategy.profiles import get_profile, normalize_profile_name
+
+from .mt5_utils import connect, select_symbol, measure_broker_offset_seconds, resolve_filling_mode
+
+TIMEFRAME_BY_PROFILE = {"1m": mt5.TIMEFRAME_M1, "5m": mt5.TIMEFRAME_M5}
+SECONDS_BY_PROFILE = {"1m": 60, "5m": 300}
+
+
+def _log(msg: str) -> None:
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{ts} UTC] {msg}", flush=True)
+
+
+class LiveExecutionBot:
+    def __init__(self, symbol: str, profile: str, magic: int,
+                 poll_interval_s: int = 10, lookback_buckets: int = 3,
+                 dry_run: bool = True, **param_overrides):
+        self.symbol = symbol
+        self.profile_name = normalize_profile_name(profile)
+        self.magic = magic
+        self.poll_interval_s = poll_interval_s
+        self.lookback_buckets = lookback_buckets
+        self.dry_run = dry_run
+
+        self.params: StrategyParams = get_profile(self.profile_name, **param_overrides)
+        self.timeframe = TIMEFRAME_BY_PROFILE[self.profile_name]
+        self.bar_seconds = SECONDS_BY_PROFILE[self.profile_name]
+
+        self.signal_engine: LiveSignalEngine | None = None
+        self._last_processed_time: int | None = None
+        self._filling_mode: int | None = None
+        self._offset_seconds: float = 0.0
+        self._running = False
+
+    # ---- arranque -----------------------------------------------------
+
+    def connect(self) -> None:
+        connect()
+        info = select_symbol(self.symbol)
+        self._filling_mode = resolve_filling_mode(self.symbol)
+        self._offset_seconds = measure_broker_offset_seconds(self.symbol)
+        acc = mt5.account_info()
+        _log(f"Conectado: cuenta {acc.login} server {acc.server} simbolo {self.symbol} "
+             f"perfil {self.profile_name} magic {self.magic} dry_run={self.dry_run}")
+        _log(f"Offset servidor vs UTC: {self._offset_seconds:+.2f}s | "
+             f"digits={info.digits} point={info.point} filling_mode={self._filling_mode}")
+
+    def replay_startup(self) -> None:
+        """Reconstruye armado/bloque HTF sobre historial reciente, SIN
+        colocar ninguna orden (spec-live-execution.md #4)."""
+        lookback_min = self.lookback_buckets * self.params.periodos_htf_min
+        now = datetime.now(timezone.utc)
+        start = now - timedelta(minutes=lookback_min + 2 * self.bar_seconds / 60)
+        rates = mt5.copy_rates_range(self.symbol, self.timeframe, start, now)
+        if rates is None or len(rates) < 2:
+            _log("Replay: historial insuficiente para el lookback pedido -- arranca en calentamiento (igual que backtest).")
+            self.signal_engine = LiveSignalEngine(self.params)
+            return
+
+        closed = rates[:-1]  # la ultima posicion es la vela en formacion -- nunca se usa
+        self.signal_engine = LiveSignalEngine(self.params)
+        for r in closed:
+            self.signal_engine.process_bar(int(r["time"]) - round(self._offset_seconds),
+                                            float(r["high"]), float(r["low"]), float(r["close"]))
+        self._last_processed_time = int(closed[-1]["time"])
+        _log(f"Replay: {len(closed)} velas cerradas procesadas ({lookback_min}min de lookback). "
+             f"armadoVenta={self.signal_engine.armado_venta} armadoCompra={self.signal_engine.armado_compra}")
+
+    # ---- estado real del broker ----------------------------------------
+
+    def my_orders(self):
+        orders = mt5.orders_get(symbol=self.symbol) or ()
+        return [o for o in orders if o.magic == self.magic]
+
+    def my_positions(self):
+        positions = mt5.positions_get(symbol=self.symbol) or ()
+        return [p for p in positions if p.magic == self.magic]
+
+    def _concurrency_count(self, direction: int) -> int:
+        order_type_for_dir = mt5.ORDER_TYPE_SELL_LIMIT if direction < 0 else mt5.ORDER_TYPE_BUY_LIMIT
+        pos_type_for_dir = mt5.POSITION_TYPE_SELL if direction < 0 else mt5.POSITION_TYPE_BUY
+        n_pend = sum(1 for o in self.my_orders() if o.type == order_type_for_dir)
+        n_open = sum(1 for p in self.my_positions() if p.type == pos_type_for_dir)
+        return n_pend + n_open
+
+    # ---- vigilancia de pendientes / abiertas ----------------------------
+
+    def _watch_pending(self, bar_high: float, bar_low: float, bar_index_time: int) -> None:
+        for o in self.my_orders():
+            d = -1 if o.type == mt5.ORDER_TYPE_SELL_LIMIT else 1
+            stop, target = o.sl, o.tp
+            tp_antes = bar_low <= target if d < 0 else bar_high >= target
+            expired, reason = False, ""
+            if tp_antes:
+                expired, reason = True, "target alcanzado sin llenarse"
+            elif self.params.orden_viva:
+                muerto = bar_high >= stop if d < 0 else bar_low <= stop
+                bars_since_born = max(0, round((bar_index_time - int(o.time_setup)) / self.bar_seconds))
+                caduca = bars_since_born >= self.params.max_bars_trade
+                if muerto:
+                    expired, reason = True, "precio alcanzo el stop sin llenarse (invalidada)"
+                elif caduca:
+                    expired, reason = True, f"caduco por tiempo ({bars_since_born} barras)"
+            else:
+                bars_since_born = max(0, round((bar_index_time - int(o.time_setup)) / self.bar_seconds))
+                if bars_since_born >= self.params.valid_bars:
+                    expired, reason = True, f"caduco por validBars ({bars_since_born} barras)"
+
+            if expired:
+                _log(f"Pendiente #{o.ticket} ({'venta' if d < 0 else 'compra'}) expirada: {reason}")
+                self._cancel_order(o.ticket)
+
+    def _watch_open(self, bar_index_time: int) -> None:
+        for p in self.my_positions():
+            bars_since_open = max(0, round((bar_index_time - int(p.time)) / self.bar_seconds))
+            if bars_since_open >= self.params.max_bars_trade:
+                _log(f"Posicion #{p.ticket} cerrada por tiempo maximo ({bars_since_open} barras)")
+                self._close_position(p)
+
+    # ---- envio de ordenes reales (o simuladas si dry_run) ---------------
+
+    def _cancel_order(self, ticket: int) -> None:
+        if self.dry_run:
+            _log(f"[dry_run] cancelaria orden #{ticket}")
+            return
+        res = mt5.order_send({"action": mt5.TRADE_ACTION_REMOVE, "order": ticket})
+        if res is None or res.retcode != mt5.TRADE_RETCODE_DONE:
+            _log(f"AVISO: no se pudo cancelar #{ticket}: {res}")
+
+    def _close_position(self, p) -> None:
+        if self.dry_run:
+            _log(f"[dry_run] cerraria posicion #{p.ticket} a mercado")
+            return
+        tick = mt5.symbol_info_tick(self.symbol)
+        close_type = mt5.ORDER_TYPE_SELL if p.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY
+        price = tick.bid if close_type == mt5.ORDER_TYPE_SELL else tick.ask
+        req = {"action": mt5.TRADE_ACTION_DEAL, "symbol": self.symbol, "volume": p.volume,
+               "type": close_type, "position": p.ticket, "price": price,
+               "magic": self.magic, "type_filling": self._filling_mode,
+               "comment": "pxs|timeout"}
+        res = mt5.order_send(req)
+        if res is None or res.retcode != mt5.TRADE_RETCODE_DONE:
+            _log(f"AVISO: no se pudo cerrar #{p.ticket}: {res}")
+
+    def _place_order(self, direction: int, entry: float, stop: float, target: float) -> None:
+        tipo = "venta" if direction < 0 else "compra"
+        if self.dry_run:
+            _log(f"[dry_run] colocaria {tipo} limite: entry={entry:.3f} sl={stop:.3f} tp={target:.3f}")
+            return
+        req = {
+            "action": mt5.TRADE_ACTION_PENDING,
+            "symbol": self.symbol,
+            "volume": self.params.fixed_lot,
+            "type": mt5.ORDER_TYPE_SELL_LIMIT if direction < 0 else mt5.ORDER_TYPE_BUY_LIMIT,
+            "price": entry,
+            "sl": stop,
+            "tp": target,
+            "magic": self.magic,
+            "comment": f"pxs|{self.profile_name}",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": self._filling_mode,
+        }
+        res = mt5.order_send(req)
+        if res is None or res.retcode != mt5.TRADE_RETCODE_DONE:
+            _log(f"AVISO: orden {tipo} rechazada: {res}")
+        else:
+            _log(f"Orden {tipo} colocada: #{res.order} entry={entry:.3f} sl={stop:.3f} tp={target:.3f}")
+
+    # ---- deteccion de vela cerrada + procesamiento por barra ------------
+
+    def _fetch_new_closed_bars(self):
+        rates = mt5.copy_rates_from_pos(self.symbol, self.timeframe, 0, 5)
+        if rates is None or len(rates) < 2:
+            return []
+        closed = rates[:-1]  # nunca se procesa la vela en formacion (rates[-1])
+        if self._last_processed_time is None:
+            return closed[-1:]
+        return [r for r in closed if int(r["time"]) > self._last_processed_time]
+
+    def process_closed_bar(self, r) -> None:
+        t = int(r["time"]) - round(self._offset_seconds)
+        high, low, close = float(r["high"]), float(r["low"]), float(r["close"])
+
+        self._watch_open(t)
+        self._watch_pending(high, low, t)
+
+        signal = self.signal_engine.process_bar(t, high, low, close)
+        if signal.dir is not None:
+            if not signal.valido:
+                _log(f"Señal descartada: stop del lado incorrecto (dir={signal.dir})")
+            else:
+                activos = self._concurrency_count(signal.dir)
+                if activos >= self.params.max_concurrent_por_direccion:
+                    _log(f"Señal descartada: limite de concurrencia ({activos}/{self.params.max_concurrent_por_direccion})")
+                else:
+                    self._place_order(signal.dir, signal.entry, signal.stop, signal.target)
+
+        self._last_processed_time = int(r["time"])
+
+    def poll_once(self) -> int:
+        """Procesa todas las velas cerradas nuevas desde el ultimo poll, EN
+        ORDEN. Devuelve cuantas proceso."""
+        nuevas = self._fetch_new_closed_bars()
+        for r in nuevas:
+            self.process_closed_bar(r)
+        return len(nuevas)
+
+    def run(self) -> None:
+        self._running = True
+        backoff = [5, 15, 60, 300]
+        bi = 0
+        while self._running:
+            try:
+                n = self.poll_once()
+                if n:
+                    _log(f"Procesadas {n} vela(s) nueva(s).")
+                bi = 0
+                time_mod.sleep(self.poll_interval_s)
+            except KeyboardInterrupt:
+                _log("Detenido por el usuario.")
+                break
+            except Exception as e:  # reconexion con backoff, spec #9
+                wait = backoff[min(bi, len(backoff) - 1)]
+                _log(f"Error en el ciclo ({e!r}), reintentando en {wait}s...")
+                time_mod.sleep(wait)
+                bi += 1
+                try:
+                    self.connect()
+                except Exception as e2:
+                    _log(f"Reconexion fallida: {e2!r}")
+
+    def stop(self) -> None:
+        self._running = False

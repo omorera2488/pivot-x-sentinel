@@ -177,11 +177,19 @@ def run_backtest(
     ema_line: np.ndarray | None = None,
     resistencia: np.ndarray | None = None,
     soporte: np.ndarray | None = None,
+    signal_log: list | None = None,
 ) -> BacktestResult:
     """Los parametros ema_line/resistencia/soporte son un hook de testeo: si se
     pasan, se usan tal cual (permite construir escenarios deterministicos en
     strategy/test_engine.py sin tener que resolver EMA a mano). En el
-    camino real (sweep/robustez) se dejan en None y se calculan aca."""
+    camino real (sweep/robustez) se dejan en None y se calculan aca.
+
+    signal_log: si se pasa una lista, se le agrega un dict por CADA señal
+    generada (bar, dir, entry, stop, target, valido) sin importar si termino
+    descartada por stop invalido o por concurrencia — sirve para validar que
+    live_signal.LiveSignalEngine (motor incremental de Fase 4) genera
+    exactamente las mismas señales que este motor batch, ver
+    strategy/test_engine.py."""
     n = len(close)
     if ema_line is None:
         ema_line = ema(close, params.ema_periods)
@@ -327,6 +335,13 @@ def run_backtest(
             entry = ema_line[i]
             stop = r_i * (1 + buf) if d < 0 else s_i * (1 - buf)
             valid = (stop > entry) if d < 0 else (stop < entry)
+            target = None
+            if valid:
+                risk = abs(stop - entry)
+                target = entry - params.rr * risk if d < 0 else entry + params.rr * risk
+            if signal_log is not None:
+                signal_log.append({"bar": i, "dir": d, "entry": entry, "stop": stop,
+                                    "target": target, "valido": valid})
             if not valid:
                 counters.n_skip_stop += 1
             else:
@@ -334,8 +349,6 @@ def run_backtest(
                 if active >= params.max_concurrent_por_direccion:
                     counters.n_skip_concurrency += 1
                 else:
-                    risk = abs(stop - entry)
-                    target = entry - params.rr * risk if d < 0 else entry + params.rr * risk
                     pending.append({"dir": d, "entry": entry, "stop": stop, "target": target, "born": i})
 
     return BacktestResult(params=params, counters=counters, trades=trades)
