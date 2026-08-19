@@ -134,7 +134,11 @@ def stop():
             raise HTTPException(409, "El bot no esta corriendo")
         _bot.stop()
         thread, _thread = _thread, None
-    thread.join(timeout=_bot.poll_interval_s + 10)
+    # bot.stop() ahora despierta el loop al instante via threading.Event
+    # (ver execution/src/bot.py) en vez de esperar a que expire el sleep del
+    # ciclo o del backoff de error (antes, hasta 300s) -- este timeout solo
+    # cubre una llamada a MT5 en curso bajo mt5_lock, no un sleep completo.
+    thread.join(timeout=10)
     return status()
 
 

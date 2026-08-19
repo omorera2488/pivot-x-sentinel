@@ -29,6 +29,7 @@ opera este bot asume el riesgo (ver disclaimer en README.md).
 """
 from __future__ import annotations
 
+import threading
 import time as time_mod
 from collections import deque
 from dataclasses import dataclass
@@ -67,6 +68,10 @@ class LiveExecutionBot:
         self._filling_mode: int | None = None
         self._offset_seconds: float = 0.0
         self._running = False
+        # usado en vez de time.sleep() dentro de run() -- permite que stop()
+        # despierte el loop al instante, incluso si esta en medio de un
+        # backoff de error de hasta 300s (ver docstring de run()).
+        self._stop_event = threading.Event()
 
         # log de eventos en memoria -- Fase 5 (api/app.py) lo expone por HTTP
         # sin necesitar que el bot escriba a disco (el proceso de la API y el
@@ -282,7 +287,13 @@ class LiveExecutionBot:
         return len(nuevas)
 
     def run(self) -> None:
+        """Bucle principal. Usa self._stop_event.wait(timeout) en vez de
+        time.sleep(): duerme lo mismo, pero stop() puede despertarlo al
+        instante en vez de esperar a que el timeout expire por su cuenta --
+        importante sobre todo en el backoff de error, que puede llegar a
+        300s (5 min) y antes dejaba a stop() sin efecto hasta que terminara."""
         self._running = True
+        self._stop_event.clear()
         backoff = [5, 15, 60, 300]
         bi = 0
         while self._running:
@@ -292,19 +303,24 @@ class LiveExecutionBot:
                 if n:
                     self._log(f"Procesadas {n} vela(s) nueva(s).")
                 bi = 0
-                time_mod.sleep(self.poll_interval_s)
+                if self._stop_event.wait(self.poll_interval_s):
+                    break
             except KeyboardInterrupt:
                 self._log("Detenido por el usuario.")
                 break
             except Exception as e:  # reconexion con backoff, spec #9
                 wait = backoff[min(bi, len(backoff) - 1)]
                 self._log(f"Error en el ciclo ({e!r}), reintentando en {wait}s...")
-                time_mod.sleep(wait)
+                if self._stop_event.wait(wait):
+                    break
                 bi += 1
                 try:
                     self.connect()
                 except Exception as e2:
                     self._log(f"Reconexion fallida: {e2!r}")
+        self._running = False
+        self._log("Detenido.")
 
     def stop(self) -> None:
         self._running = False
+        self._stop_event.set()
