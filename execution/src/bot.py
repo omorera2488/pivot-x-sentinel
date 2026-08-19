@@ -11,9 +11,13 @@ ordenes/posiciones REALES del broker — nunca contra una copia en memoria
 Nota sobre metadatos: a diferencia de lo que asumia el borrador de la spec
 (#6), MT5 SI guarda todo lo que hace falta directamente en la orden/posicion
 (`time_setup`/`time` = born/open, `sl`, `tp`, `price_open`, `type` = direccion)
-— no hace falta un registro local aparte para la mecanica del ciclo de vida.
-El `comment` se usa solo como etiqueta legible en el terminal, no se
-reconstruye nada critico a partir de el.
+— no hace falta un registro local aparte. El `comment` se usa solo como
+etiqueta legible en el terminal, no se reconstruye nada critico a partir de
+el. OJO: `time_setup`/`time` son tiempo de RELOJ, no el `bar_index` de Pine
+-- `maxBarsTrade`/`validBars` cuentan barras REALMENTE formadas (no avanzan
+con el mercado cerrado), asi que `_bars_between()` consulta el historial
+real via `copy_rates_range` en vez de dividir tiempo transcurrido por la
+duracion nominal de la barra (eso sobre-contaria cualquier fin de semana).
 
 dry_run=True (default): calcula todo pero NUNCA llama a order_send/
 order_remove — solo loguea que haria. Poner dry_run=False para operar de
@@ -116,7 +120,32 @@ class LiveExecutionBot:
 
     # ---- vigilancia de pendientes / abiertas ----------------------------
 
-    def _watch_pending(self, bar_high: float, bar_low: float, bar_index_time: int) -> None:
+    def _bars_between(self, t_from_server: int, t_to_server: int) -> int:
+        """Cuenta velas REALMENTE formadas entre t_from y t_to (bar_index en
+        Pine, no minutos de reloj). t_from/t_to en hora de SERVIDOR sin
+        corregir -- mismo sistema que time_setup/time de las ordenes/
+        posiciones de MT5 y que copy_rates_range, asi que se comparan
+        directamente sin tocar el offset.
+
+        Reemplaza a proposito un calculo por tiempo de reloj (elapsed /
+        duracion nominal de la barra): ese calculo sobre-cuenta cualquier
+        fin de semana/feriado de por medio (el mercado no genera velas
+        cuando esta cerrado, pero el reloj sigue corriendo) y dispararia
+        `caduca`/`tooLong` mucho antes de lo que pretende spec-estrategia.md
+        #5.2/#5.4 -- ahi `bar_index` es el contador nativo de Pine, que solo
+        avanza cuando se forma una vela nueva. Consultar el historial real
+        via copy_rates_range da exactamente ese conteo: si el mercado estuvo
+        cerrado, MT5 simplemente no devuelve barras para ese lapso."""
+        if t_to_server <= t_from_server:
+            return 0
+        dt_from = datetime.fromtimestamp(t_from_server, tz=timezone.utc)
+        dt_to = datetime.fromtimestamp(t_to_server, tz=timezone.utc)
+        rates = mt5.copy_rates_range(self.symbol, self.timeframe, dt_from, dt_to)
+        if rates is None or len(rates) == 0:
+            return 0
+        return max(0, len(rates) - 1)  # rates[0] es la barra "from" misma -- no cuenta como barra transcurrida
+
+    def _watch_pending(self, bar_high: float, bar_low: float, raw_bar_time: int) -> None:
         for o in self.my_orders():
             d = -1 if o.type == mt5.ORDER_TYPE_SELL_LIMIT else 1
             stop, target = o.sl, o.tp
@@ -126,26 +155,26 @@ class LiveExecutionBot:
                 expired, reason = True, "target alcanzado sin llenarse"
             elif self.params.orden_viva:
                 muerto = bar_high >= stop if d < 0 else bar_low <= stop
-                bars_since_born = max(0, round((bar_index_time - int(o.time_setup)) / self.bar_seconds))
+                bars_since_born = self._bars_between(int(o.time_setup), raw_bar_time)
                 caduca = bars_since_born >= self.params.max_bars_trade
                 if muerto:
                     expired, reason = True, "precio alcanzo el stop sin llenarse (invalidada)"
                 elif caduca:
-                    expired, reason = True, f"caduco por tiempo ({bars_since_born} barras)"
+                    expired, reason = True, f"caduco por tiempo ({bars_since_born} barras reales)"
             else:
-                bars_since_born = max(0, round((bar_index_time - int(o.time_setup)) / self.bar_seconds))
+                bars_since_born = self._bars_between(int(o.time_setup), raw_bar_time)
                 if bars_since_born >= self.params.valid_bars:
-                    expired, reason = True, f"caduco por validBars ({bars_since_born} barras)"
+                    expired, reason = True, f"caduco por validBars ({bars_since_born} barras reales)"
 
             if expired:
                 _log(f"Pendiente #{o.ticket} ({'venta' if d < 0 else 'compra'}) expirada: {reason}")
                 self._cancel_order(o.ticket)
 
-    def _watch_open(self, bar_index_time: int) -> None:
+    def _watch_open(self, raw_bar_time: int) -> None:
         for p in self.my_positions():
-            bars_since_open = max(0, round((bar_index_time - int(p.time)) / self.bar_seconds))
+            bars_since_open = self._bars_between(int(p.time), raw_bar_time)
             if bars_since_open >= self.params.max_bars_trade:
-                _log(f"Posicion #{p.ticket} cerrada por tiempo maximo ({bars_since_open} barras)")
+                _log(f"Posicion #{p.ticket} cerrada por tiempo maximo ({bars_since_open} barras reales)")
                 self._close_position(p)
 
     # ---- envio de ordenes reales (o simuladas si dry_run) ---------------
@@ -209,11 +238,16 @@ class LiveExecutionBot:
         return [r for r in closed if int(r["time"]) > self._last_processed_time]
 
     def process_closed_bar(self, r) -> None:
-        t = int(r["time"]) - round(self._offset_seconds)
+        raw_time = int(r["time"])                          # hora de SERVIDOR sin corregir
+        t = raw_time - round(self._offset_seconds)         # UTC corregido -- solo para el bloque HTF (motor de señal)
         high, low, close = float(r["high"]), float(r["low"]), float(r["close"])
 
-        self._watch_open(t)
-        self._watch_pending(high, low, t)
+        # _watch_open/_watch_pending cuentan barras REALES via copy_rates_range
+        # (mismo sistema de tiempo que time_setup/time de MT5: hora de servidor,
+        # no corregida) -- ver _bars_between. El offset solo importa para
+        # alinear el bloque HTF con la epoca UTC, no para esto.
+        self._watch_open(raw_time)
+        self._watch_pending(high, low, raw_time)
 
         signal = self.signal_engine.process_bar(t, high, low, close)
         if signal.dir is not None:

@@ -124,6 +124,10 @@ si (velaActual - openBar) >= maxBarsTrade:
 
 A diferencia del backtest (que cierra a `close[j]` por definición, `spec-estrategia.md` §5.4), en vivo el cierre es a mercado real — precio de ejecución sujeto al spread/slippage del momento, no al `close` exacto de la vela. Es la naturaleza de "vivo" vs "backtest de velas"; ya estaba anotado como diferencia esperada en `spec-backtest.md` §5.4.
 
+**Bug encontrado y corregido (reportado por el usuario, no detectado en la implementación inicial):** `spec-estrategia.md` §5.2/§5.4 define `caduca`/`tooLong` contando **barras realmente formadas** (`bar_index` de Pine, que no avanza con el mercado cerrado). La primera versión de `execution/src/bot.py` estimaba esto dividiendo el tiempo de reloj transcurrido desde `time_setup`/`time` (nativos de MT5) por la duración nominal de la barra — eso cuenta minutos de calendario, no barras. Verificado contra datos reales: en una ventana de 58 horas que cruza un fin de semana (viernes 20:00 UTC a lunes 06:00 UTC), esa estimación contaba **696 barras M5**, cuando el mercado formó realmente **108**. Con `maxBarsTrade=500` (default), una posición abierta el viernes se habría cerrado por timeout en pleno sábado, sin mercado abierto — mucho antes de lo que la especificación pretende.
+
+**Corrección:** `_bars_between()` en `bot.py` cuenta barras reales consultando `mt5.copy_rates_range()` entre el timestamp de origen (`time_setup`/`time`, hora de servidor sin corregir) y la barra actual, en vez de estimar por tiempo de reloj. Si el mercado estuvo cerrado en ese lapso, MT5 simplemente no devuelve barras para esa ventana — el conteo excluye el hueco automáticamente, igual que `bar_index` en Pine. No hace falta persistir nada nuevo para esto: sigue sin haber un registro local aparte (§6), solo una consulta distinta.
+
 ---
 
 ## 9. Reconexión y errores
