@@ -27,10 +27,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root
 import MetaTrader5 as mt5
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from execution.src.bot import LiveExecutionBot
 from execution.src.mt5_utils import mt5_lock
+from strategy.profiles import PROFILES
 
 app = FastAPI(title="pivot-x-sentinel API", version="0.1.0")
 app.add_middleware(
@@ -53,6 +55,25 @@ class StartRequest(BaseModel):
     magic: int = DEFAULT_MAGIC
     poll_interval_s: int = 10
     live: bool = False  # False = dry_run (default seguro, ver docs/spec-live-execution.md)
+    # overrides opcionales sobre el perfil elegido (strategy/profiles.py) --
+    # None = usar el default del perfil, sin tocarlo. El panel (Fase 6) los
+    # manda solo si el usuario los edito en Configuracion.
+    ema_periods: int | None = None
+    periodos_htf_min: int | None = None
+    buf_bp: float | None = None
+    rr: float | None = None
+    max_concurrent_por_direccion: int | None = None
+    valid_bars: int | None = None
+    orden_viva: bool | None = None
+    max_bars_trade: int | None = None
+    fixed_lot: float | None = None
+    entrada_viva: bool | None = None
+
+    def overrides(self) -> dict:
+        fields = ("ema_periods", "periodos_htf_min", "buf_bp", "rr",
+                   "max_concurrent_por_direccion", "valid_bars", "orden_viva",
+                   "max_bars_trade", "fixed_lot", "entrada_viva")
+        return {f: v for f in fields if (v := getattr(self, f)) is not None}
 
 
 def _bot_running() -> bool:
@@ -90,6 +111,7 @@ def start(req: StartRequest):
         bot = LiveExecutionBot(
             symbol=req.symbol, profile=req.profile, magic=req.magic,
             poll_interval_s=req.poll_interval_s, dry_run=not req.live,
+            **req.overrides(),
         )
         with mt5_lock:
             bot.connect()
@@ -119,6 +141,14 @@ def events(limit: int = Query(200, ge=1, le=1000)):
     if _bot is None:
         return []
     return list(_bot.events)[-limit:]
+
+
+@app.get("/profiles")
+def profiles():
+    """Defaults de cada perfil (strategy/profiles.py) -- una sola fuente de
+    verdad, el panel de Configuracion los usa para precargar el formulario
+    sin tener los numeros duplicados en el frontend."""
+    return {name: params.__dict__ for name, params in PROFILES.items()}
 
 
 # ---- estado del broker (no depende de que el bot este corriendo) ----------
@@ -160,3 +190,12 @@ def history(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC,
     if deals is None:
         return []
     return [d._asdict() for d in deals if d.magic == magic and d.symbol == symbol]
+
+
+# ---- panel estatico (Fase 6) -----------------------------------------------
+# Servido por el mismo proceso -- sin build step, HTML/CSS/JS planos que
+# consumen esta misma API por fetch(). Montado al final a proposito: si se
+# monta antes, StaticFiles puede interceptar rutas antes que las de la API.
+_panel_dir = Path(__file__).resolve().parents[1] / "panel"
+if _panel_dir.exists():
+    app.mount("/panel", StaticFiles(directory=_panel_dir, html=True), name="panel")

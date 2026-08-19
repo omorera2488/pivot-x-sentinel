@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pivot-x-sentinel · Calendario</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="actions">
+    <a class="btn btn-neutral" href="index.html">← Panel</a>
+    <a class="btn btn-neutral" href="history.html">Historial completo</a>
+  </div>
+</div>
+
+<h1>Resultados por día operativo</h1>
+<p class="subtitle">Calculado con el historial de operaciones cerradas de MT5 (<code>GET /history</code>), agrupado por día local — no una copia propia.</p>
+
+<div class="err-banner" id="err"></div>
+
+<div class="topbar" style="margin-bottom:16px;">
+  <button class="btn-neutral" id="btnPrev">‹ Anterior</button>
+  <h2 id="monthLabel" style="margin:0;">--</h2>
+  <button class="btn-neutral" id="btnNext">Siguiente ›</button>
+</div>
+
+<div class="grid grid-4">
+  <div class="card"><div class="label">Resultado del mes</div><div class="big" id="monthResult">--</div></div>
+  <div class="card"><div class="label">Operaciones del mes</div><div class="big" id="monthOps">--</div></div>
+  <div class="card"><div class="label">Total histórico</div><div class="big" id="totalResult">--</div></div>
+  <div class="card"><div class="label">Operaciones históricas</div><div class="big" id="totalOps">--</div></div>
+</div>
+
+<div class="cal-grid" id="calGrid"></div>
+
+<script src="app.js"></script>
+<script>
+const DAY_NAMES = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
+let allTrades = [];
+let cursor = new Date();
+cursor.setDate(1);
+
+function localDayKey(unixSeconds) {
+  const d = new Date(unixSeconds * 1000);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+async function load() {
+  try {
+    const s = await apiGet("/status");
+    const qs = s.symbol ? `?symbol=${s.symbol}&magic=${s.magic}&days=3650` : "?days=3650";
+    const history = await apiGet("/history" + qs);
+    allTrades = closedTrades(history);
+    const totals = tradeStats(allTrades);
+    document.getElementById("totalResult").textContent = fmtUSD(totals.total);
+    document.getElementById("totalResult").className = "big " + (totals.total > 0 ? "green" : totals.total < 0 ? "red" : "");
+    document.getElementById("totalOps").textContent = totals.n;
+    render();
+  } catch (err) {
+    showError("err", err);
+  }
+}
+
+function render() {
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  document.getElementById("monthLabel").textContent =
+    cursor.toLocaleDateString("es-AR", { month: "long", year: "numeric" });
+
+  const byDay = {};
+  for (const t of allTrades) {
+    const d = new Date(t.time * 1000);
+    if (d.getFullYear() !== year || d.getMonth() !== month) continue;
+    const key = d.getDate();
+    if (!byDay[key]) byDay[key] = [];
+    byDay[key].push(t);
+  }
+
+  let monthTotal = 0, monthOps = 0;
+  for (const key in byDay) {
+    monthOps += byDay[key].length;
+    monthTotal += byDay[key].reduce((s, t) => s + t.net, 0);
+  }
+  document.getElementById("monthResult").textContent = fmtUSD(monthTotal);
+  document.getElementById("monthResult").className = "big " + (monthTotal > 0 ? "green" : monthTotal < 0 ? "red" : "");
+  document.getElementById("monthOps").textContent = monthOps;
+
+  const firstOfMonth = new Date(year, month, 1);
+  const startOffset = (firstOfMonth.getDay() + 6) % 7; // lunes=0
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const grid = document.getElementById("calGrid");
+  let html = DAY_NAMES.map((n) => `<div class="cal-day-name">${n}</div>`).join("");
+  for (let i = 0; i < startOffset; i++) html += `<div class="cal-cell empty"></div>`;
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const trades = byDay[day] || [];
+    if (!trades.length) {
+      html += `<div class="cal-cell"><div class="day-num">${day}</div><div class="day-ops">Sin operaciones</div></div>`;
+      continue;
+    }
+    const stats = tradeStats(trades);
+    const cls = stats.total > 0 ? "green" : stats.total < 0 ? "red" : "";
+    html += `<div class="cal-cell">
+      <div class="day-num">${day}</div>
+      <div class="day-result ${cls}">${fmtUSD(stats.total)}</div>
+      <div class="day-ops">${stats.n} ops · ${stats.wins}G / ${stats.losses}P</div>
+    </div>`;
+  }
+  grid.innerHTML = html;
+}
+
+document.getElementById("btnPrev").addEventListener("click", () => {
+  cursor.setMonth(cursor.getMonth() - 1);
+  render();
+});
+document.getElementById("btnNext").addEventListener("click", () => {
+  cursor.setMonth(cursor.getMonth() + 1);
+  render();
+});
+
+load();
+</script>
+</body>
+</html>

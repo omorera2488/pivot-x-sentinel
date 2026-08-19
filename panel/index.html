@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pivot-x-sentinel</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1>pivot-x-sentinel</h1>
+    <p class="subtitle" id="subtitle">Control local · cargando…</p>
+  </div>
+  <div class="actions">
+    <button class="btn-start" id="btnStart">Iniciar bot</button>
+    <button class="btn-stop" id="btnStop">Detener de forma segura</button>
+    <a class="btn btn-neutral" href="config.html">Configuración</a>
+    <a class="btn btn-neutral" href="history.html">Historial completo</a>
+    <a class="btn btn-neutral" href="calendar.html">Calendario</a>
+  </div>
+</div>
+
+<div class="err-banner" id="err"></div>
+
+<div class="grid grid-3">
+  <div class="card">
+    <div class="label">Bot</div>
+    <div class="big" id="botState">--</div>
+  </div>
+  <div class="card">
+    <div class="label">Estrategia</div>
+    <div class="big" id="strategyState">--</div>
+    <div class="small-note" id="strategyDetail"></div>
+  </div>
+  <div class="card">
+    <div class="label">Conexión y permisos de MT5</div>
+    <div class="big" id="mt5State">--</div>
+    <div class="small-note" id="mt5Detail"></div>
+  </div>
+</div>
+
+<div class="grid grid-4">
+  <div class="card"><div class="label">Balance</div><div class="big" id="balance">--</div></div>
+  <div class="card"><div class="label">Equity</div><div class="big" id="equity">--</div></div>
+  <div class="card"><div class="label">Resultado total</div><div class="big" id="totalResult">--</div></div>
+  <div class="card"><div class="label">Operaciones</div><div class="big" id="opsCount">--</div></div>
+</div>
+
+<div class="grid grid-4">
+  <div class="card"><div class="label">Ganadas / Perdidas</div><div class="big" id="winsLosses">--</div></div>
+  <div class="card"><div class="label">Efectividad</div><div class="big" id="winRate">--</div></div>
+  <div class="card"><div class="label">Flotante</div><div class="big" id="floating">--</div></div>
+  <div class="card"><div class="label">Posiciones y pendientes</div><div class="big" id="posPend">--</div></div>
+</div>
+
+<div class="card" style="margin-bottom:14px;">
+  <div class="section-title">Curva de capital</div>
+  <div class="chart-wrap"><svg class="equity-curve" id="equityCurve" viewBox="0 0 1000 220" preserveAspectRatio="none"></svg></div>
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <div class="section-title">Muestra y riesgo</div>
+    <table>
+      <tr><td class="muted">Cuenta MT5</td><td id="mAccount">--</td></tr>
+      <tr><td class="muted">Instrumento</td><td id="mSymbol">--</td></tr>
+      <tr><td class="muted">Temporalidad</td><td id="mProfile">--</td></tr>
+      <tr><td class="muted">Volumen activo</td><td id="mLot">--</td></tr>
+      <tr><td class="muted">Riesgo / beneficio</td><td id="mRR">--</td></tr>
+      <tr><td class="muted">Bloque HTF</td><td id="mBlock">--</td></tr>
+      <tr><td class="muted">Período EMA</td><td id="mEma">--</td></tr>
+      <tr><td class="muted">Modo</td><td id="mMode">--</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <div class="section-title">Últimos eventos</div>
+    <ul class="events-list" id="eventsList"><li class="loading">Cargando…</li></ul>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-title">Últimas 20 operaciones</div>
+  <table>
+    <thead>
+      <tr><th>Hora local</th><th>Posición</th><th>Volumen</th><th>Precio</th><th>Resultado neto</th></tr>
+    </thead>
+    <tbody id="tradesBody"><tr><td colspan="5" class="loading">Cargando…</td></tr></tbody>
+  </table>
+</div>
+
+<script src="app.js"></script>
+<script>
+let statusData = null;
+
+function renderStatus(s) {
+  statusData = s;
+  const running = s.running;
+  document.getElementById("botState").textContent = running ? "CORRIENDO" : "DETENIDO";
+  document.getElementById("botState").className = "big " + (running ? "green" : "red");
+
+  document.getElementById("btnStart").disabled = running;
+  document.getElementById("btnStop").disabled = !running;
+
+  const pending = loadPendingConfig();
+  const profile = s.profile || (pending && pending.profile) || "5m";
+  document.getElementById("subtitle").textContent = `Control local · Perfil ${profile.toUpperCase()}` +
+    (running ? (s.dry_run ? " · dry-run" : " · EN VIVO") : "");
+
+  document.getElementById("strategyState").textContent = profile.toUpperCase();
+  if (s.params) {
+    document.getElementById("strategyDetail").textContent =
+      `EMA ${s.params.ema_periods} · bloque ${s.params.periodos_htf_min}min · R:R ${s.params.rr} · ` +
+      (s.dry_run ? "dry-run (no manda órdenes)" : "EN VIVO");
+  } else {
+    document.getElementById("strategyDetail").textContent = pending
+      ? "Configurado, sin iniciar todavía"
+      : "Sin configurar -- ver Configuración";
+  }
+
+  document.getElementById("mProfile").textContent = profile.toUpperCase();
+  document.getElementById("mMode").textContent = running ? (s.dry_run ? "Dry-run" : "En vivo") : "Detenido";
+  if (s.params) {
+    document.getElementById("mLot").textContent = `${s.params.fixed_lot} lotes`;
+    document.getElementById("mRR").textContent = `1 : ${s.params.rr}`;
+    document.getElementById("mBlock").textContent = `${s.params.periodos_htf_min} min`;
+    document.getElementById("mEma").textContent = s.params.ema_periods;
+  }
+  if (s.symbol) document.getElementById("mSymbol").textContent = s.symbol;
+}
+
+function renderAccount(acc) {
+  document.getElementById("balance").textContent = fmtUSD(acc.balance);
+  document.getElementById("equity").textContent = fmtUSD(acc.equity);
+  document.getElementById("mAccount").textContent = `#${acc.login} ${acc.name}`;
+  document.getElementById("mt5State").textContent = "CONECTADO Y LISTO";
+  document.getElementById("mt5State").className = "big green";
+  document.getElementById("mt5Detail").textContent =
+    `Conexión con MT5 verificada · cuenta ${acc.trade_mode === 0 ? "demo" : "real"} autorizada para operar.`;
+}
+
+function renderPositionsOrders(positions, orders) {
+  document.getElementById("posPend").textContent = `Posiciones: ${positions.length} · Pendientes: ${orders.length}`;
+  const floating = positions.reduce((s, p) => s + (p.profit || 0), 0);
+  document.getElementById("floating").textContent = fmtUSD(floating);
+  document.getElementById("floating").className = "big " + (floating > 0 ? "green" : floating < 0 ? "red" : "");
+}
+
+function renderEquityCurve(trades) {
+  const svg = document.getElementById("equityCurve");
+  if (trades.length < 2) {
+    svg.innerHTML = `<text x="500" y="110" fill="#7c8aa5" font-size="14" text-anchor="middle">No hay suficientes operaciones cerradas todavía</text>`;
+    return;
+  }
+  let cum = 0;
+  const points = trades.map((t) => (cum += t.net));
+  const min = Math.min(0, ...points);
+  const max = Math.max(0, ...points);
+  const range = max - min || 1;
+  const W = 1000, H = 220, PAD = 10;
+  const coords = points.map((v, i) => {
+    const x = (i / (points.length - 1)) * (W - 2 * PAD) + PAD;
+    const y = H - PAD - ((v - min) / range) * (H - 2 * PAD);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const color = points[points.length - 1] >= 0 ? "#34d399" : "#f87171";
+  svg.innerHTML = `<polyline points="${coords.join(" ")}" fill="none" stroke="${color}" stroke-width="2"/>`;
+}
+
+function renderTradeStats(trades) {
+  const { n, wins, losses, total, winRate } = tradeStats(trades);
+  document.getElementById("opsCount").textContent = n;
+  document.getElementById("totalResult").textContent = fmtUSD(total);
+  document.getElementById("totalResult").className = "big " + (total > 0 ? "green" : total < 0 ? "red" : "");
+  document.getElementById("winsLosses").textContent = `${wins} / ${losses}`;
+  document.getElementById("winRate").textContent = winRate === null ? "--" : fmtPct(winRate);
+}
+
+function renderTradesTable(trades) {
+  const rows = trades.slice(-20).reverse();
+  const tbody = document.getElementById("tradesBody");
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="muted">Sin operaciones cerradas todavía.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map((t) => `
+    <tr>
+      <td>${fmtLocalTime(t.time)}</td>
+      <td>${t.position_id}</td>
+      <td>${t.volume}</td>
+      <td>${t.price}</td>
+      <td class="${t.net > 0 ? "green" : t.net < 0 ? "red" : ""}">${fmtUSD(t.net)}</td>
+    </tr>`).join("");
+}
+
+function renderEvents(events) {
+  const list = document.getElementById("eventsList");
+  if (!events.length) {
+    list.innerHTML = `<li class="muted">Sin eventos todavía.</li>`;
+    return;
+  }
+  list.innerHTML = events.slice(-30).reverse().map((e) => `
+    <li><span class="ev-time">${fmtLocalTime(Math.floor(new Date(e.time).getTime() / 1000))}</span>${e.msg}</li>
+  `).join("");
+}
+
+async function refresh() {
+  try {
+    const s = await apiGet("/status");
+    renderStatus(s);
+    clearError("err");
+
+    const [acc, positions, orders, events] = await Promise.all([
+      apiGet("/account"),
+      apiGet("/positions" + (s.symbol ? `?symbol=${s.symbol}&magic=${s.magic}` : "")),
+      apiGet("/orders" + (s.symbol ? `?symbol=${s.symbol}&magic=${s.magic}` : "")),
+      apiGet("/events?limit=50"),
+    ]);
+    renderAccount(acc);
+    renderPositionsOrders(positions, orders);
+    renderEvents(events);
+
+    const historyQS = s.symbol ? `?symbol=${s.symbol}&magic=${s.magic}&days=365` : "?days=365";
+    const history = await apiGet("/history" + historyQS);
+    const trades = closedTrades(history);
+    renderTradeStats(trades);
+    renderEquityCurve(trades);
+    renderTradesTable(trades);
+  } catch (err) {
+    showError("err", err);
+  }
+}
+
+document.getElementById("btnStart").addEventListener("click", async () => {
+  const pending = loadPendingConfig() || { profile: "5m", symbol: "XAUUSDm", magic: 900001, poll_interval_s: 10, live: false };
+  try {
+    document.getElementById("btnStart").disabled = true;
+    await apiPost("/start", pending);
+    await refresh();
+  } catch (err) {
+    showError("err", err);
+  }
+});
+
+document.getElementById("btnStop").addEventListener("click", async () => {
+  try {
+    document.getElementById("btnStop").disabled = true;
+    await apiPost("/stop");
+    await refresh();
+  } catch (err) {
+    showError("err", err);
+  }
+});
+
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>

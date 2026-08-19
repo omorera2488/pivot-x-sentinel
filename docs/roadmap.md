@@ -112,13 +112,15 @@ Especificación: [docs/spec-api.md](spec-api.md). Implementada en [/api](../api)
 
 ---
 
-## Fase 6 — Panel web (frontend)
+## Fase 6 — Panel web (frontend) ✅ COMPLETADA
+
+Especificación: [docs/spec-panel.md](spec-panel.md). Implementado en [/panel](../panel) (HTML/CSS/JS planos, sin build step, servido por el mismo proceso que la API).
 
 **Objetivo:** la interfaz visual, inspirada en las capturas de "M1 Pivotes 15" pero simplificada a un solo proceso.
 
-**Debe incluir:** tarjetas de estado (bot, conexión MT5), métricas de cuenta, curva de capital, tabla de operaciones recientes, log de eventos, botones de iniciar/detener.
+**Debe incluir:** tarjetas de estado (bot, conexión MT5), métricas de cuenta, curva de capital, tabla de operaciones recientes, log de eventos, botones de iniciar/detener. Además, a pedido del usuario: sin la tarjeta de "shadow candidato" (no aplica, Fase 0), selector de estrategia en Configuración con indicador de la estrategia activa en el panel principal, historial completo y calendario de resultados calculados con el historial real de MT5.
 
-**Criterio de aceptación:** el panel refleja en tiempo real (o casi) el estado real de la cuenta MT5.
+**Criterio de aceptación:** el panel refleja en tiempo real (o casi) el estado real de la cuenta MT5. ✅ Probado en vivo (Browser) contra la API real: las 4 páginas cargan y funcionan — iniciar/detener el bot desde la UI, selector de perfil precargando defaults, balance/equity reales, eventos en vivo.
 
 ---
 
@@ -155,6 +157,6 @@ Especificación: [docs/spec-api.md](spec-api.md). Implementada en [/api](../api)
 | 3 — Backtest de Oro | ❌ Corrido — sin edge robusto en M5, ver spec-backtest.md §8 |
 | 4 — Ejecución en vivo | ✅ Implementada, `dry_run` por defecto (sin parámetros validados de Fase 3) |
 | 5 — API local | ✅ Completada |
-| 6 — Panel web | ⏳ Pendiente |
+| 6 — Panel web | ✅ Completada |
 | 7 — Ejecutable Windows | ⏳ Pendiente |
 | 8 — Validación y checklist a real | ⏳ Pendiente |

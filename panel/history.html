@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pivot-x-sentinel · Historial</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="actions">
+    <a class="btn btn-neutral" href="index.html">← Panel</a>
+    <a class="btn btn-neutral" href="calendar.html">Calendario</a>
+  </div>
+  <button class="btn-primary" id="btnExport">Exportar historial CSV</button>
+</div>
+
+<h1>Historial completo</h1>
+<p class="subtitle">Operaciones cerradas del bot, leídas directo del historial de MT5 (<code>GET /history</code>) — no de una copia propia.</p>
+
+<div class="err-banner" id="err"></div>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>Fecha y hora local</th><th>Posición</th><th>Volumen</th><th>Precio de salida</th><th>Resultado neto</th></tr>
+    </thead>
+    <tbody id="body"><tr><td colspan="5" class="loading">Cargando…</td></tr></tbody>
+  </table>
+</div>
+
+<script src="app.js"></script>
+<script>
+let allTrades = [];
+
+async function load() {
+  try {
+    const s = await apiGet("/status");
+    const qs = s.symbol ? `?symbol=${s.symbol}&magic=${s.magic}&days=3650` : "?days=3650";
+    const history = await apiGet("/history" + qs);
+    allTrades = closedTrades(history).reverse();
+    render();
+  } catch (err) {
+    showError("err", err);
+    document.getElementById("body").innerHTML = `<tr><td colspan="5" class="muted">No se pudo cargar.</td></tr>`;
+  }
+}
+
+function render() {
+  const tbody = document.getElementById("body");
+  if (!allTrades.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="muted">Sin operaciones cerradas todavía.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = allTrades.map((t) => `
+    <tr>
+      <td>${fmtLocalDateTime(t.time)}</td>
+      <td>${t.position_id}</td>
+      <td>${t.volume}</td>
+      <td>${t.price}</td>
+      <td class="${t.net > 0 ? "green" : t.net < 0 ? "red" : ""}">${fmtUSD(t.net)}</td>
+    </tr>`).join("");
+}
+
+document.getElementById("btnExport").addEventListener("click", () => {
+  const header = "fecha_local,posicion,volumen,precio,resultado_neto\n";
+  const rows = allTrades.map((t) =>
+    [fmtLocalDateTime(t.time), t.position_id, t.volume, t.price, t.net.toFixed(2)].join(",")
+  ).join("\n");
+  const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "historial_pivot-x-sentinel.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+load();
+</script>
+</body>
+</html>

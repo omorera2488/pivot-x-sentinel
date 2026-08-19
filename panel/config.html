@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pivot-x-sentinel · Configuración</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <a class="btn btn-neutral" href="index.html">← Volver al panel</a>
+  <span id="botBadge" class="badge badge-red">Bot detenido</span>
+</div>
+
+<h1>Configuración del bot</h1>
+<p class="subtitle">Guardar cambios detiene el bot si está corriendo. Para volver a operar iniciálo de nuevo desde el panel principal.</p>
+
+<div class="err-banner" id="err"></div>
+
+<form id="cfgForm">
+  <div class="grid grid-2">
+    <div class="field">
+      <label for="profile">Estrategia (perfil)</label>
+      <div class="hint">Los dos perfiles del Pine de origen (<code>/basecode_tradingview</code>): 1m (EMA 15, bloque HTF 100min) y 5m (EMA 12, bloque HTF 400min). Elegir uno precarga sus defaults abajo — todos son editables después.</div>
+      <select id="profile">
+        <option value="5m">5m — EMA 12, bloque 400min</option>
+        <option value="1m">1m — EMA 15, bloque 100min</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="symbol">Instrumento</label>
+      <div class="hint">Símbolo tal como lo nombra tu bróker (varía: XAUUSD, XAUUSDm, XAUUSD.a…). Se resuelve buscando "XAU" en los símbolos disponibles si no coincide exacto.</div>
+      <input type="text" id="symbol" value="XAUUSDm">
+    </div>
+
+    <div class="field">
+      <label for="fixed_lot">Volumen por operación (lotes)</label>
+      <div class="hint">Lote fijo — el dimensionamiento por riesgo variable es tema de la Fase 8, no de este bot todavía.</div>
+      <input type="number" id="fixed_lot" step="0.01" min="0.01">
+    </div>
+    <div class="field">
+      <label for="rr">Riesgo : Beneficio</label>
+      <div class="hint">Múltiplo del riesgo para el take profit. Sin validar por backtest todavía (ver docs/spec-backtest.md §8) — operar con esto en vivo es una decisión tuya, no una recomendación del sistema.</div>
+      <input type="number" id="rr" step="0.1" min="0.1">
+    </div>
+
+    <div class="field">
+      <label for="ema_periods">Período de la EMA</label>
+      <div class="hint">Cantidad de velas usadas para la media exponencial que cruza las señales.</div>
+      <input type="number" id="ema_periods" min="1" step="1">
+    </div>
+    <div class="field">
+      <label for="periodos_htf_min">Bloque HTF (minutos)</label>
+      <div class="hint">Duración del bloque de referencia (resistencia/soporte) — el bloque anterior YA CERRADO, no el que se está formando (spec-estrategia.md §3.3).</div>
+      <input type="number" id="periodos_htf_min" min="1" step="1">
+    </div>
+
+    <div class="field">
+      <label for="buf_bp">Buffer del stop (basis points)</label>
+      <div class="hint">Margen más allá del nivel de resistencia/soporte para el stop, como fracción del precio.</div>
+      <input type="number" id="buf_bp" step="0.1" min="0">
+    </div>
+    <div class="field">
+      <label for="max_concurrent_por_direccion">Máx. operaciones concurrentes por dirección</label>
+      <div class="hint">Límite propio de este motor — el Pine original no tenía ninguno (spec-estrategia.md §6).</div>
+      <input type="number" id="max_concurrent_por_direccion" min="1" step="1">
+    </div>
+
+    <div class="field">
+      <label for="max_bars_trade">Máximo de barras por operación</label>
+      <div class="hint">Tope de espera de una orden pendiente y de duración de una posición abierta (dos relojes independientes, spec-estrategia.md §5.4).</div>
+      <input type="number" id="max_bars_trade" min="10" step="1">
+    </div>
+    <div class="field">
+      <label for="valid_bars">Barras de validez (modo fijo)</label>
+      <div class="hint">Solo aplica si "Orden viva" está desactivado.</div>
+      <input type="number" id="valid_bars" min="1" step="1">
+    </div>
+
+    <div class="field">
+      <label><input type="checkbox" id="orden_viva"> Orden viva hasta invalidarse</label>
+      <div class="hint">Default del Pine: activado. La orden pendiente vive hasta que el precio invalida el setup o se cumple el máximo de barras, en vez de una ventana fija.</div>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="entrada_viva"> Entrada en la EMA actual (móvil)</label>
+      <div class="hint">Variante del Pine (spec-estrategia.md §4.3): el llenado sigue la EMA en vivo en vez de quedar fijo en la EMA de la señal. Default del Pine: desactivado.</div>
+    </div>
+
+    <div class="field">
+      <label for="magic">Magic number</label>
+      <div class="hint">Identifica las órdenes de este bot en MT5 — nunca toca posiciones manuales con otro magic number.</div>
+      <input type="number" id="magic" min="1" step="1">
+    </div>
+    <div class="field">
+      <label for="poll_interval_s">Intervalo de sondeo (segundos)</label>
+      <div class="hint">Cada cuánto el bot revisa si cerró una vela nueva.</div>
+      <input type="number" id="poll_interval_s" min="1" step="1">
+    </div>
+  </div>
+
+  <div class="field" style="border-color:#7f1d1d; margin-bottom:16px;">
+    <label><input type="checkbox" id="live"> Operar en vivo (manda órdenes reales)</label>
+    <div class="hint red">Desactivado (dry-run) por defecto: el bot calcula todo pero solo loguea lo que haría, no manda ninguna orden. Activar esto hace que mande órdenes reales al bróker — usar solo en cuenta demo, y solo si entendés que no hay un edge validado por backtest todavía (docs/spec-backtest.md §8, docs/spec-live-execution.md).</div>
+  </div>
+
+  <button type="submit" class="btn-start">Guardar cambios y detener bot</button>
+  <span id="savedNote" class="small-note" style="margin-left:10px;"></span>
+</form>
+
+<script src="app.js"></script>
+<script>
+const FIELDS = ["symbol", "magic", "poll_interval_s", "live", "ema_periods", "periodos_htf_min",
+  "buf_bp", "rr", "max_concurrent_por_direccion", "valid_bars", "orden_viva", "max_bars_trade",
+  "fixed_lot", "entrada_viva"];
+
+function getEl(id) { return document.getElementById(id); }
+
+function readForm() {
+  const cfg = { profile: getEl("profile").value };
+  for (const f of FIELDS) {
+    const el = getEl(f);
+    cfg[f] = el.type === "checkbox" ? el.checked : (el.type === "number" ? Number(el.value) : el.value);
+  }
+  return cfg;
+}
+
+function fillForm(cfg) {
+  getEl("profile").value = cfg.profile || "5m";
+  for (const f of FIELDS) {
+    const el = getEl(f);
+    if (cfg[f] === undefined || cfg[f] === null) continue;
+    if (el.type === "checkbox") el.checked = !!cfg[f];
+    else el.value = cfg[f];
+  }
+}
+
+let profileDefaults = {};
+
+async function applyProfileDefaults(name, keepUserValues) {
+  const defaults = profileDefaults[name];
+  if (!defaults) return;
+  const cfg = keepUserValues ? readForm() : {};
+  fillForm({ ...defaults, ...(keepUserValues ? { symbol: cfg.symbol, magic: cfg.magic, poll_interval_s: cfg.poll_interval_s, live: cfg.live } : {}), profile: name });
+}
+
+async function init() {
+  try {
+    profileDefaults = await apiGet("/profiles");
+  } catch (err) {
+    showError("err", err);
+  }
+
+  const pending = loadPendingConfig();
+  if (pending) {
+    fillForm(pending);
+  } else {
+    fillForm({ profile: "5m", symbol: "XAUUSDm", magic: 900001, poll_interval_s: 10, live: false, ...profileDefaults["5m"] });
+  }
+
+  try {
+    const s = await apiGet("/status");
+    const badge = getEl("botBadge");
+    if (s.running) {
+      badge.textContent = "Bot corriendo";
+      badge.className = "badge badge-green";
+    } else {
+      badge.textContent = "Bot detenido";
+      badge.className = "badge badge-red";
+    }
+  } catch (err) {
+    showError("err", err);
+  }
+}
+
+getEl("profile").addEventListener("change", (e) => applyProfileDefaults(e.target.value, true));
+
+getEl("cfgForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const cfg = readForm();
+  savePendingConfig(cfg);
+  try {
+    const s = await apiGet("/status");
+    if (s.running) await apiPost("/stop");
+    getEl("savedNote").textContent = "Guardado. El bot quedó detenido -- iniciálo de nuevo desde el panel principal para aplicar los cambios.";
+  } catch (err) {
+    showError("err", err);
+  }
+});
+
+init();
+</script>
+</body>
+</html>
