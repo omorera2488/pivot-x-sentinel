@@ -4,6 +4,8 @@
 
 Implementado en [/panel](../panel): HTML/CSS/JS planos, sin build step, consumiendo la API de la Fase 5 (`/api`) por `fetch()`. Servido por el mismo proceso — `api/app.py` monta `/panel` como estático (`api/app.py` §"panel estatico").
 
+**Estilo (paleta, layout, disposición de la barra de acciones) copiado a propósito del dashboard real en `C:\Dev\tradingbot\src\tradingbot\dashboard\app.py`** (el mismo bot de las capturas), a pedido explícito del usuario — variables de color, el contenedor `<main>` centrado con ancho máximo, y la grilla de 4 columnas con tarjetas que ocupan 1/2/3/4 columnas (`wide`/`wide3`/`full`) en vez de filas de grillas separadas. Solo el CSS/HTML se tomó de esa referencia — la lógica de negocio, los endpoints y los datos que consume el panel son propios de este proyecto (`/api`, §3 más abajo), no se copió nada de `tradingbot`.
+
 ## 1. Diferencias deliberadas contra la referencia
 
 - **Sin tarjeta "Shadow candidato".** El proyecto de referencia corre un proceso "shadow" candidato en paralelo al bot real; acá no existe ese concepto (Fase 0: "sin shadow candidato, sin procesos paralelos"). La fila de tarjetas de estado pasa de 3 a 3 igual, pero reemplazando Shadow por una tarjeta **Estrategia** — sin dejar un hueco vacío y agregando algo que sí hace falta (ver §2).

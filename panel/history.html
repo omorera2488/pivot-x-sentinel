@@ -7,29 +7,32 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<main class="narrow">
 
-<div class="topbar">
-  <div class="actions">
-    <a class="btn btn-neutral" href="index.html">← Panel</a>
-    <a class="btn btn-neutral" href="calendar.html">Calendario</a>
-  </div>
-  <button class="btn-primary" id="btnExport">Exportar historial CSV</button>
+<div class="toolbar">
+  <a class="nav" href="index.html">← Panel</a>
+  <a class="nav" href="calendar.html">Calendario</a>
+  <button class="export" id="btnExport" disabled>Exportar historial CSV</button>
 </div>
 
 <h1>Historial completo</h1>
-<p class="subtitle">Operaciones cerradas del bot, leídas directo del historial de MT5 (<code>GET /history</code>) — no de una copia propia.</p>
+<div class="sub" id="scope">Operaciones cerradas por el bot, leídas directo del historial de MT5 (<code>GET /history</code>).</div>
 
 <div class="err-banner" id="err"></div>
 
-<div class="card">
-  <table>
-    <thead>
-      <tr><th>Fecha y hora local</th><th>Posición</th><th>Volumen</th><th>Precio de salida</th><th>Resultado neto</th></tr>
-    </thead>
-    <tbody id="body"><tr><td colspan="5" class="loading">Cargando…</td></tr></tbody>
-  </table>
-</div>
+<section class="card">
+  <div class="summary" id="summary"></div>
+  <div style="overflow-x:auto;">
+    <table>
+      <thead>
+        <tr><th>Fecha y hora local</th><th>Posición</th><th>Volumen</th><th>Precio de salida</th><th>Resultado neto</th></tr>
+      </thead>
+      <tbody id="body"><tr><td colspan="5" class="loading">Cargando…</td></tr></tbody>
+    </table>
+  </div>
+</section>
 
+</main>
 <script src="app.js"></script>
 <script>
 let allTrades = [];
@@ -48,6 +51,15 @@ async function load() {
 }
 
 function render() {
+  const { n, wins, losses, total, winRate } = tradeStats(allTrades);
+  document.getElementById("btnExport").disabled = !n;
+  document.getElementById("scope").textContent = `Historial conservado · ${n} operaciones cerradas.`;
+  document.getElementById("summary").innerHTML =
+    `<span>Total histórico<br><b class="${total >= 0 ? "ok" : "bad"}">${fmtUSD(total)}</b></span>` +
+    `<span>Ganadas<br><b>${wins}</b></span>` +
+    `<span>Perdidas<br><b>${losses}</b></span>` +
+    `<span>Efectividad<br><b>${winRate === null ? "--" : fmtPct(winRate)}</b></span>`;
+
   const tbody = document.getElementById("body");
   if (!allTrades.length) {
     tbody.innerHTML = `<tr><td colspan="5" class="muted">Sin operaciones cerradas todavía.</td></tr>`;
@@ -59,7 +71,7 @@ function render() {
       <td>${t.position_id}</td>
       <td>${t.volume}</td>
       <td>${t.price}</td>
-      <td class="${t.net > 0 ? "green" : t.net < 0 ? "red" : ""}">${fmtUSD(t.net)}</td>
+      <td class="${t.net > 0 ? "ok" : t.net < 0 ? "bad" : ""}">${fmtUSD(t.net)}</td>
     </tr>`).join("");
 }
 
@@ -68,11 +80,11 @@ document.getElementById("btnExport").addEventListener("click", () => {
   const rows = allTrades.map((t) =>
     [fmtLocalDateTime(t.time), t.position_id, t.volume, t.price, t.net.toFixed(2)].join(",")
   ).join("\n");
-  const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8;" });
+  const blob = new Blob(["﻿" + header + rows], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "historial_pivot-x-sentinel.csv";
+  a.download = `pivot-x-sentinel-historial-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 });

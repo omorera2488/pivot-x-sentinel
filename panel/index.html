@@ -7,98 +7,90 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<main>
 
-<div class="topbar">
-  <div>
-    <h1>pivot-x-sentinel</h1>
-    <p class="subtitle" id="subtitle">Control local · cargando…</p>
-  </div>
-  <div class="actions">
-    <button class="btn-start" id="btnStart">Iniciar bot</button>
-    <button class="btn-stop" id="btnStop">Detener de forma segura</button>
-    <a class="btn btn-neutral" href="config.html">Configuración</a>
-    <a class="btn btn-neutral" href="history.html">Historial completo</a>
-    <a class="btn btn-neutral" href="calendar.html">Calendario</a>
+<h1>pivot-x-sentinel</h1>
+<div class="sub" id="subtitle">Control local · cargando…</div>
+
+<div class="toolbar">
+  <button class="start" id="btnStart">Iniciar bot</button>
+  <button class="stop" id="btnStop">Detener de forma segura</button>
+  <span id="msg" class="muted"></span>
+  <div class="nav-group">
+    <a class="nav" href="config.html">Configuración</a>
+    <a class="nav" href="history.html">Historial completo</a>
+    <a class="nav" href="calendar.html">Calendario</a>
   </div>
 </div>
 
 <div class="err-banner" id="err"></div>
 
-<div class="grid grid-3">
+<section class="grid">
   <div class="card">
     <div class="label">Bot</div>
-    <div class="big" id="botState">--</div>
+    <div class="value" id="botState">--</div>
   </div>
   <div class="card">
     <div class="label">Estrategia</div>
-    <div class="big" id="strategyState">--</div>
-    <div class="small-note" id="strategyDetail"></div>
+    <div class="value" id="strategyState">--</div>
   </div>
-  <div class="card">
+  <div class="card wide">
     <div class="label">Conexión y permisos de MT5</div>
-    <div class="big" id="mt5State">--</div>
-    <div class="small-note" id="mt5Detail"></div>
+    <div class="value" id="mt5State">--</div>
+    <div class="status-help" id="mt5Detail">Comprobando conexión…</div>
   </div>
-</div>
 
-<div class="grid grid-4">
-  <div class="card"><div class="label">Balance</div><div class="big" id="balance">--</div></div>
-  <div class="card"><div class="label">Equity</div><div class="big" id="equity">--</div></div>
-  <div class="card"><div class="label">Resultado total</div><div class="big" id="totalResult">--</div></div>
-  <div class="card"><div class="label">Operaciones</div><div class="big" id="opsCount">--</div></div>
-</div>
+  <div class="card"><div class="label">Balance</div><div class="value" id="balance">--</div></div>
+  <div class="card"><div class="label">Equity</div><div class="value" id="equity">--</div></div>
+  <div class="card"><div class="label">Resultado total</div><div class="value" id="totalResult">--</div></div>
+  <div class="card"><div class="label">Operaciones</div><div class="value" id="opsCount">--</div></div>
 
-<div class="grid grid-4">
-  <div class="card"><div class="label">Ganadas / Perdidas</div><div class="big" id="winsLosses">--</div></div>
-  <div class="card"><div class="label">Efectividad</div><div class="big" id="winRate">--</div></div>
-  <div class="card"><div class="label">Flotante</div><div class="big" id="floating">--</div></div>
-  <div class="card"><div class="label">Posiciones y pendientes</div><div class="big" id="posPend">--</div></div>
-</div>
+  <div class="card"><div class="label">Ganadas / Perdidas</div><div class="value" id="winsLosses">--</div></div>
+  <div class="card"><div class="label">Efectividad</div><div class="value" id="winRate">--</div></div>
+  <div class="card"><div class="label">Flotante</div><div class="value" id="floating">--</div></div>
+  <div class="card"><div class="label">Posiciones y pendientes</div><div class="active-list" id="posPend">--</div></div>
 
-<div class="card" style="margin-bottom:14px;">
-  <div class="section-title">Curva de capital</div>
-  <div class="chart-wrap"><svg class="equity-curve" id="equityCurve" viewBox="0 0 1000 220" preserveAspectRatio="none"></svg></div>
-</div>
+  <div class="card full">
+    <div class="label">Curva de capital</div>
+    <div class="chart-wrap"><svg class="equity-curve" id="equityCurve" viewBox="0 0 1000 180" preserveAspectRatio="none"></svg></div>
+  </div>
 
-<div class="grid grid-2">
+  <div class="card wide3">
+    <div class="label">Muestra y riesgo</div>
+    <div class="sample-grid">
+      <div class="sample-item"><span>Cuenta MT5</span><b id="mAccount">--</b></div>
+      <div class="sample-item"><span>Instrumento</span><b id="mSymbol">--</b></div>
+      <div class="sample-item"><span>Temporalidad</span><b id="mProfile">--</b></div>
+      <div class="sample-item"><span>Volumen activo</span><b id="mLot">--</b></div>
+      <div class="sample-item"><span>Riesgo / beneficio</span><b id="mRR">--</b></div>
+      <div class="sample-item"><span>Bloque HTF</span><b id="mBlock">--</b></div>
+      <div class="sample-item"><span>Período EMA</span><b id="mEma">--</b></div>
+      <div class="sample-item"><span>Modo</span><b id="mMode">--</b></div>
+    </div>
+  </div>
   <div class="card">
-    <div class="section-title">Muestra y riesgo</div>
+    <div class="label">Últimos eventos</div>
+    <div class="events-list" id="eventsList">Cargando…</div>
+  </div>
+
+  <div class="card full">
+    <div class="label">Últimas 20 operaciones</div>
     <table>
-      <tr><td class="muted">Cuenta MT5</td><td id="mAccount">--</td></tr>
-      <tr><td class="muted">Instrumento</td><td id="mSymbol">--</td></tr>
-      <tr><td class="muted">Temporalidad</td><td id="mProfile">--</td></tr>
-      <tr><td class="muted">Volumen activo</td><td id="mLot">--</td></tr>
-      <tr><td class="muted">Riesgo / beneficio</td><td id="mRR">--</td></tr>
-      <tr><td class="muted">Bloque HTF</td><td id="mBlock">--</td></tr>
-      <tr><td class="muted">Período EMA</td><td id="mEma">--</td></tr>
-      <tr><td class="muted">Modo</td><td id="mMode">--</td></tr>
+      <thead>
+        <tr><th>Hora local</th><th>Posición</th><th>Volumen</th><th>Precio</th><th>Resultado neto</th></tr>
+      </thead>
+      <tbody id="tradesBody"><tr><td colspan="5" class="loading">Cargando…</td></tr></tbody>
     </table>
   </div>
-  <div class="card">
-    <div class="section-title">Últimos eventos</div>
-    <ul class="events-list" id="eventsList"><li class="loading">Cargando…</li></ul>
-  </div>
-</div>
+</section>
 
-<div class="card">
-  <div class="section-title">Últimas 20 operaciones</div>
-  <table>
-    <thead>
-      <tr><th>Hora local</th><th>Posición</th><th>Volumen</th><th>Precio</th><th>Resultado neto</th></tr>
-    </thead>
-    <tbody id="tradesBody"><tr><td colspan="5" class="loading">Cargando…</td></tr></tbody>
-  </table>
-</div>
-
+</main>
 <script src="app.js"></script>
 <script>
-let statusData = null;
-
 function renderStatus(s) {
-  statusData = s;
   const running = s.running;
-  document.getElementById("botState").textContent = running ? "CORRIENDO" : "DETENIDO";
-  document.getElementById("botState").className = "big " + (running ? "green" : "red");
+  document.getElementById("botState").textContent = running ? "ACTIVO" : "DETENIDO";
+  document.getElementById("botState").className = "value " + (running ? "ok" : "bad");
 
   document.getElementById("btnStart").disabled = running;
   document.getElementById("btnStop").disabled = !running;
@@ -109,16 +101,6 @@ function renderStatus(s) {
     (running ? (s.dry_run ? " · dry-run" : " · EN VIVO") : "");
 
   document.getElementById("strategyState").textContent = profile.toUpperCase();
-  if (s.params) {
-    document.getElementById("strategyDetail").textContent =
-      `EMA ${s.params.ema_periods} · bloque ${s.params.periodos_htf_min}min · R:R ${s.params.rr} · ` +
-      (s.dry_run ? "dry-run (no manda órdenes)" : "EN VIVO");
-  } else {
-    document.getElementById("strategyDetail").textContent = pending
-      ? "Configurado, sin iniciar todavía"
-      : "Sin configurar -- ver Configuración";
-  }
-
   document.getElementById("mProfile").textContent = profile.toUpperCase();
   document.getElementById("mMode").textContent = running ? (s.dry_run ? "Dry-run" : "En vivo") : "Detenido";
   if (s.params) {
@@ -135,22 +117,24 @@ function renderAccount(acc) {
   document.getElementById("equity").textContent = fmtUSD(acc.equity);
   document.getElementById("mAccount").textContent = `#${acc.login} ${acc.name}`;
   document.getElementById("mt5State").textContent = "CONECTADO Y LISTO";
-  document.getElementById("mt5State").className = "big green";
+  document.getElementById("mt5State").className = "value ok";
   document.getElementById("mt5Detail").textContent =
     `Conexión con MT5 verificada · cuenta ${acc.trade_mode === 0 ? "demo" : "real"} autorizada para operar.`;
 }
 
 function renderPositionsOrders(positions, orders) {
-  document.getElementById("posPend").textContent = `Posiciones: ${positions.length} · Pendientes: ${orders.length}`;
+  const lines = [`<p>Posiciones: ${positions.length} · Pendientes: ${orders.length}</p>`]
+    .concat(positions.map((p) => `<p>Posición #${p.ticket} · <b class="${p.profit >= 0 ? "ok" : "bad"}">${fmtUSD(p.profit)}</b></p>`));
+  document.getElementById("posPend").innerHTML = lines.join("");
   const floating = positions.reduce((s, p) => s + (p.profit || 0), 0);
   document.getElementById("floating").textContent = fmtUSD(floating);
-  document.getElementById("floating").className = "big " + (floating > 0 ? "green" : floating < 0 ? "red" : "");
+  document.getElementById("floating").className = "value " + (floating > 0 ? "ok" : floating < 0 ? "bad" : "");
 }
 
 function renderEquityCurve(trades) {
   const svg = document.getElementById("equityCurve");
   if (trades.length < 2) {
-    svg.innerHTML = `<text x="500" y="110" fill="#7c8aa5" font-size="14" text-anchor="middle">No hay suficientes operaciones cerradas todavía</text>`;
+    svg.innerHTML = `<text x="500" y="90" fill="#8fa3bd" font-size="14" text-anchor="middle">No hay suficientes operaciones cerradas todavía</text>`;
     return;
   }
   let cum = 0;
@@ -158,21 +142,20 @@ function renderEquityCurve(trades) {
   const min = Math.min(0, ...points);
   const max = Math.max(0, ...points);
   const range = max - min || 1;
-  const W = 1000, H = 220, PAD = 10;
+  const W = 1000, H = 180, PAD = 8;
   const coords = points.map((v, i) => {
     const x = (i / (points.length - 1)) * (W - 2 * PAD) + PAD;
     const y = H - PAD - ((v - min) / range) * (H - 2 * PAD);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   });
-  const color = points[points.length - 1] >= 0 ? "#34d399" : "#f87171";
-  svg.innerHTML = `<polyline points="${coords.join(" ")}" fill="none" stroke="${color}" stroke-width="2"/>`;
+  svg.innerHTML = `<polyline points="${coords.join(" ")}" fill="none" stroke="#4da3ff" stroke-width="2"/>`;
 }
 
 function renderTradeStats(trades) {
   const { n, wins, losses, total, winRate } = tradeStats(trades);
   document.getElementById("opsCount").textContent = n;
   document.getElementById("totalResult").textContent = fmtUSD(total);
-  document.getElementById("totalResult").className = "big " + (total > 0 ? "green" : total < 0 ? "red" : "");
+  document.getElementById("totalResult").className = "value " + (total > 0 ? "ok" : total < 0 ? "bad" : "");
   document.getElementById("winsLosses").textContent = `${wins} / ${losses}`;
   document.getElementById("winRate").textContent = winRate === null ? "--" : fmtPct(winRate);
 }
@@ -190,18 +173,18 @@ function renderTradesTable(trades) {
       <td>${t.position_id}</td>
       <td>${t.volume}</td>
       <td>${t.price}</td>
-      <td class="${t.net > 0 ? "green" : t.net < 0 ? "red" : ""}">${fmtUSD(t.net)}</td>
+      <td class="${t.net > 0 ? "ok" : t.net < 0 ? "bad" : ""}">${fmtUSD(t.net)}</td>
     </tr>`).join("");
 }
 
 function renderEvents(events) {
   const list = document.getElementById("eventsList");
   if (!events.length) {
-    list.innerHTML = `<li class="muted">Sin eventos todavía.</li>`;
+    list.innerHTML = `<p>Sin eventos todavía.</p>`;
     return;
   }
   list.innerHTML = events.slice(-30).reverse().map((e) => `
-    <li><span class="ev-time">${fmtLocalTime(Math.floor(new Date(e.time).getTime() / 1000))}</span>${e.msg}</li>
+    <p><span class="ev-time">${fmtLocalTime(Math.floor(new Date(e.time).getTime() / 1000))}</span> · ${e.msg}</p>
   `).join("");
 }
 
@@ -229,26 +212,36 @@ async function refresh() {
     renderTradesTable(trades);
   } catch (err) {
     showError("err", err);
+    document.getElementById("mt5State").textContent = "CONEXIÓN NO DISPONIBLE";
+    document.getElementById("mt5State").className = "value bad";
   }
 }
 
 document.getElementById("btnStart").addEventListener("click", async () => {
   const pending = loadPendingConfig() || { profile: "5m", symbol: "XAUUSDm", magic: 900001, poll_interval_s: 10, live: false };
+  const msg = document.getElementById("msg");
   try {
     document.getElementById("btnStart").disabled = true;
+    msg.textContent = "Procesando…";
     await apiPost("/start", pending);
+    msg.textContent = "Bot iniciado";
     await refresh();
   } catch (err) {
+    msg.textContent = "";
     showError("err", err);
   }
 });
 
 document.getElementById("btnStop").addEventListener("click", async () => {
+  const msg = document.getElementById("msg");
   try {
     document.getElementById("btnStop").disabled = true;
+    msg.textContent = "Procesando…";
     await apiPost("/stop");
+    msg.textContent = "Bot detenido de forma segura";
     await refresh();
   } catch (err) {
+    msg.textContent = "";
     showError("err", err);
   }
 });

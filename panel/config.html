@@ -7,107 +7,118 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<main class="narrower">
 
-<div class="topbar">
-  <a class="btn btn-neutral" href="index.html">← Volver al panel</a>
-  <span id="botBadge" class="badge badge-red">Bot detenido</span>
+<div class="toolbar">
+  <a class="nav" href="index.html">← Volver al panel</a>
+  <strong id="botState" class="muted">Consultando estado…</strong>
 </div>
 
 <h1>Configuración del bot</h1>
-<p class="subtitle">Guardar cambios detiene el bot si está corriendo. Para volver a operar iniciálo de nuevo desde el panel principal.</p>
+<div class="sub">Guardar cambios detiene el bot si está corriendo. Para volver a operar iniciálo de nuevo desde el panel principal.</div>
 
 <div class="err-banner" id="err"></div>
 
+<section class="card" style="margin-top:20px;">
 <form id="cfgForm">
-  <div class="grid grid-2">
-    <div class="field">
-      <label for="profile">Estrategia (perfil)</label>
-      <div class="hint">Los dos perfiles del Pine de origen (<code>/basecode_tradingview</code>): 1m (EMA 15, bloque HTF 100min) y 5m (EMA 12, bloque HTF 400min). Elegir uno precarga sus defaults abajo — todos son editables después.</div>
+  <div class="config-grid">
+    <label class="setting">
+      <b>Estrategia (perfil)</b>
+      <small>Los dos perfiles del Pine de origen (<code>/basecode_tradingview</code>): 1m (EMA 15, bloque HTF 100min) y 5m (EMA 12, bloque HTF 400min). Elegir uno precarga sus defaults — todos son editables después.</small>
       <select id="profile">
         <option value="5m">5m — EMA 12, bloque 400min</option>
         <option value="1m">1m — EMA 15, bloque 100min</option>
       </select>
-    </div>
-    <div class="field">
-      <label for="symbol">Instrumento</label>
-      <div class="hint">Símbolo tal como lo nombra tu bróker (varía: XAUUSD, XAUUSDm, XAUUSD.a…). Se resuelve buscando "XAU" en los símbolos disponibles si no coincide exacto.</div>
+    </label>
+    <label class="setting">
+      <b>Instrumento</b>
+      <small>Símbolo tal como lo nombra tu bróker (varía: XAUUSD, XAUUSDm, XAUUSD.a…).</small>
       <input type="text" id="symbol" value="XAUUSDm">
-    </div>
+    </label>
 
-    <div class="field">
-      <label for="fixed_lot">Volumen por operación (lotes)</label>
-      <div class="hint">Lote fijo — el dimensionamiento por riesgo variable es tema de la Fase 8, no de este bot todavía.</div>
+    <label class="setting">
+      <b>Volumen por operación (lotes)</b>
+      <small>Lote fijo — el dimensionamiento por riesgo variable es tema de la Fase 8, no de este bot todavía.</small>
       <input type="number" id="fixed_lot" step="0.01" min="0.01">
-    </div>
-    <div class="field">
-      <label for="rr">Riesgo : Beneficio</label>
-      <div class="hint">Múltiplo del riesgo para el take profit. Sin validar por backtest todavía (ver docs/spec-backtest.md §8) — operar con esto en vivo es una decisión tuya, no una recomendación del sistema.</div>
+    </label>
+    <label class="setting">
+      <b>Riesgo : Beneficio</b>
+      <small>Múltiplo del riesgo para el take profit. Sin validar por backtest todavía (docs/spec-backtest.md §8).</small>
       <input type="number" id="rr" step="0.1" min="0.1">
-    </div>
+    </label>
 
-    <div class="field">
-      <label for="ema_periods">Período de la EMA</label>
-      <div class="hint">Cantidad de velas usadas para la media exponencial que cruza las señales.</div>
+    <label class="setting">
+      <b>Período de la EMA</b>
+      <small>Cantidad de velas usadas para la media exponencial que cruza las señales.</small>
       <input type="number" id="ema_periods" min="1" step="1">
-    </div>
-    <div class="field">
-      <label for="periodos_htf_min">Bloque HTF (minutos)</label>
-      <div class="hint">Duración del bloque de referencia (resistencia/soporte) — el bloque anterior YA CERRADO, no el que se está formando (spec-estrategia.md §3.3).</div>
+    </label>
+    <label class="setting">
+      <b>Bloque HTF (minutos)</b>
+      <small>Duración del bloque de referencia — el bloque anterior YA CERRADO, no el que se está formando (spec-estrategia.md §3.3).</small>
       <input type="number" id="periodos_htf_min" min="1" step="1">
-    </div>
+    </label>
 
-    <div class="field">
-      <label for="buf_bp">Buffer del stop (basis points)</label>
-      <div class="hint">Margen más allá del nivel de resistencia/soporte para el stop, como fracción del precio.</div>
+    <label class="setting">
+      <b>Buffer del stop (basis points)</b>
+      <small>Margen más allá del nivel de resistencia/soporte para el stop.</small>
       <input type="number" id="buf_bp" step="0.1" min="0">
-    </div>
-    <div class="field">
-      <label for="max_concurrent_por_direccion">Máx. operaciones concurrentes por dirección</label>
-      <div class="hint">Límite propio de este motor — el Pine original no tenía ninguno (spec-estrategia.md §6).</div>
+    </label>
+    <label class="setting">
+      <b>Máx. operaciones concurrentes por dirección</b>
+      <small>Límite propio de este motor — el Pine original no tenía ninguno (spec-estrategia.md §6).</small>
       <input type="number" id="max_concurrent_por_direccion" min="1" step="1">
-    </div>
+    </label>
 
-    <div class="field">
-      <label for="max_bars_trade">Máximo de barras por operación</label>
-      <div class="hint">Tope de espera de una orden pendiente y de duración de una posición abierta (dos relojes independientes, spec-estrategia.md §5.4).</div>
+    <label class="setting">
+      <b>Máximo de barras por operación</b>
+      <small>Tope de espera de una orden pendiente y de duración de una posición abierta.</small>
       <input type="number" id="max_bars_trade" min="10" step="1">
-    </div>
-    <div class="field">
-      <label for="valid_bars">Barras de validez (modo fijo)</label>
-      <div class="hint">Solo aplica si "Orden viva" está desactivado.</div>
+    </label>
+    <label class="setting">
+      <b>Barras de validez (modo fijo)</b>
+      <small>Solo aplica si "Orden viva" está desactivado.</small>
       <input type="number" id="valid_bars" min="1" step="1">
-    </div>
+    </label>
 
-    <div class="field">
-      <label><input type="checkbox" id="orden_viva"> Orden viva hasta invalidarse</label>
-      <div class="hint">Default del Pine: activado. La orden pendiente vive hasta que el precio invalida el setup o se cumple el máximo de barras, en vez de una ventana fija.</div>
-    </div>
-    <div class="field">
-      <label><input type="checkbox" id="entrada_viva"> Entrada en la EMA actual (móvil)</label>
-      <div class="hint">Variante del Pine (spec-estrategia.md §4.3): el llenado sigue la EMA en vivo en vez de quedar fijo en la EMA de la señal. Default del Pine: desactivado.</div>
-    </div>
+    <label class="setting">
+      <b><input type="checkbox" id="orden_viva"> Orden viva hasta invalidarse</b>
+      <small>Default del Pine: activado. La orden pendiente vive hasta que el precio invalida el setup o se cumple el máximo de barras.</small>
+    </label>
+    <label class="setting">
+      <b><input type="checkbox" id="entrada_viva"> Entrada en la EMA actual (móvil)</b>
+      <small>Variante del Pine (spec-estrategia.md §4.3): el llenado sigue la EMA en vivo. Default: desactivado.</small>
+    </label>
 
-    <div class="field">
-      <label for="magic">Magic number</label>
-      <div class="hint">Identifica las órdenes de este bot en MT5 — nunca toca posiciones manuales con otro magic number.</div>
+    <label class="setting">
+      <b>Magic number</b>
+      <small>Identifica las órdenes de este bot en MT5 — nunca toca posiciones manuales con otro magic number.</small>
       <input type="number" id="magic" min="1" step="1">
-    </div>
-    <div class="field">
-      <label for="poll_interval_s">Intervalo de sondeo (segundos)</label>
-      <div class="hint">Cada cuánto el bot revisa si cerró una vela nueva.</div>
+    </label>
+    <label class="setting">
+      <b>Intervalo de sondeo (segundos)</b>
+      <small>Cada cuánto el bot revisa si cerró una vela nueva.</small>
       <input type="number" id="poll_interval_s" min="1" step="1">
+    </label>
+  </div>
+
+  <details open>
+    <summary>Riesgo — operar en vivo</summary>
+    <div class="config-grid" style="margin-top:12px;">
+      <label class="setting" style="border-color:#7f1d1d;">
+        <b><input type="checkbox" id="live"> Operar en vivo (manda órdenes reales)</b>
+        <small class="bad">Desactivado (dry-run) por defecto: el bot calcula todo pero solo loguea lo que haría. Usar solo en cuenta demo, y solo si entendés que no hay un edge validado por backtest todavía (docs/spec-backtest.md §8).</small>
+      </label>
     </div>
-  </div>
+  </details>
 
-  <div class="field" style="border-color:#7f1d1d; margin-bottom:16px;">
-    <label><input type="checkbox" id="live"> Operar en vivo (manda órdenes reales)</label>
-    <div class="hint red">Desactivado (dry-run) por defecto: el bot calcula todo pero solo loguea lo que haría, no manda ninguna orden. Activar esto hace que mande órdenes reales al bróker — usar solo en cuenta demo, y solo si entendés que no hay un edge validado por backtest todavía (docs/spec-backtest.md §8, docs/spec-live-execution.md).</div>
+  <div class="toolbar" style="margin-top:18px;">
+    <button type="submit" class="start">Guardar cambios y detener bot</button>
+    <span id="savedNote" class="muted"></span>
   </div>
-
-  <button type="submit" class="btn-start">Guardar cambios y detener bot</button>
-  <span id="savedNote" class="small-note" style="margin-left:10px;"></span>
 </form>
+</section>
 
+</main>
 <script src="app.js"></script>
 <script>
 const FIELDS = ["symbol", "magic", "poll_interval_s", "live", "ema_periods", "periodos_htf_min",
@@ -160,13 +171,13 @@ async function init() {
 
   try {
     const s = await apiGet("/status");
-    const badge = getEl("botBadge");
+    const badge = getEl("botState");
     if (s.running) {
-      badge.textContent = "Bot corriendo";
-      badge.className = "badge badge-green";
+      badge.textContent = "● Bot activo";
+      badge.className = "ok";
     } else {
-      badge.textContent = "Bot detenido";
-      badge.className = "badge badge-red";
+      badge.textContent = "● Bot detenido";
+      badge.className = "bad";
     }
   } catch (err) {
     showError("err", err);

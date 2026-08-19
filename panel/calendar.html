@@ -7,45 +7,40 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<main class="narrow">
 
-<div class="topbar">
-  <div class="actions">
-    <a class="btn btn-neutral" href="index.html">← Panel</a>
-    <a class="btn btn-neutral" href="history.html">Historial completo</a>
-  </div>
+<div class="toolbar">
+  <a class="nav" href="index.html">← Panel</a>
+  <a class="nav" href="history.html">Historial completo</a>
 </div>
 
 <h1>Resultados por día operativo</h1>
-<p class="subtitle">Calculado con el historial de operaciones cerradas de MT5 (<code>GET /history</code>), agrupado por día local — no una copia propia.</p>
+<div class="sub" id="scope">Calculado con el historial de operaciones cerradas de MT5 (<code>GET /history</code>), agrupado por día local.</div>
 
 <div class="err-banner" id="err"></div>
 
-<div class="topbar" style="margin-bottom:16px;">
-  <button class="btn-neutral" id="btnPrev">‹ Anterior</button>
-  <h2 id="monthLabel" style="margin:0;">--</h2>
-  <button class="btn-neutral" id="btnNext">Siguiente ›</button>
+<div class="toolbar">
+  <button class="nav" id="btnPrev">‹ Anterior</button>
+  <strong id="monthLabel" style="flex:1; text-align:center;">--</strong>
+  <button class="nav" id="btnNext">Siguiente ›</button>
 </div>
 
-<div class="grid grid-4">
-  <div class="card"><div class="label">Resultado del mes</div><div class="big" id="monthResult">--</div></div>
-  <div class="card"><div class="label">Operaciones del mes</div><div class="big" id="monthOps">--</div></div>
-  <div class="card"><div class="label">Total histórico</div><div class="big" id="totalResult">--</div></div>
-  <div class="card"><div class="label">Operaciones históricas</div><div class="big" id="totalOps">--</div></div>
+<div class="totals">
+  <div class="total-card"><span>Resultado del mes</span><b id="monthResult">$0.00</b></div>
+  <div class="total-card"><span>Operaciones del mes</span><b id="monthOps">0</b></div>
+  <div class="total-card"><span>Total histórico</span><b id="totalResult">$0.00</b></div>
+  <div class="total-card"><span>Operaciones históricas</span><b id="totalOps">0</b></div>
 </div>
 
-<div class="cal-grid" id="calGrid"></div>
+<div class="calendar" id="calGrid"></div>
 
+</main>
 <script src="app.js"></script>
 <script>
 const DAY_NAMES = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
 let allTrades = [];
 let cursor = new Date();
 cursor.setDate(1);
-
-function localDayKey(unixSeconds) {
-  const d = new Date(unixSeconds * 1000);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
 
 async function load() {
   try {
@@ -55,7 +50,7 @@ async function load() {
     allTrades = closedTrades(history);
     const totals = tradeStats(allTrades);
     document.getElementById("totalResult").textContent = fmtUSD(totals.total);
-    document.getElementById("totalResult").className = "big " + (totals.total > 0 ? "green" : totals.total < 0 ? "red" : "");
+    document.getElementById("totalResult").className = totals.total >= 0 ? "ok" : "bad";
     document.getElementById("totalOps").textContent = totals.n;
     render();
   } catch (err) {
@@ -84,7 +79,7 @@ function render() {
     monthTotal += byDay[key].reduce((s, t) => s + t.net, 0);
   }
   document.getElementById("monthResult").textContent = fmtUSD(monthTotal);
-  document.getElementById("monthResult").className = "big " + (monthTotal > 0 ? "green" : monthTotal < 0 ? "red" : "");
+  document.getElementById("monthResult").className = monthTotal >= 0 ? "ok" : "bad";
   document.getElementById("monthOps").textContent = monthOps;
 
   const firstOfMonth = new Date(year, month, 1);
@@ -92,21 +87,21 @@ function render() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
   const grid = document.getElementById("calGrid");
-  let html = DAY_NAMES.map((n) => `<div class="cal-day-name">${n}</div>`).join("");
-  for (let i = 0; i < startOffset; i++) html += `<div class="cal-cell empty"></div>`;
+  let html = DAY_NAMES.map((n) => `<div class="weekday">${n}</div>`).join("");
+  for (let i = 0; i < startOffset; i++) html += `<div class="day empty"></div>`;
 
   for (let day = 1; day <= daysInMonth; day++) {
     const trades = byDay[day] || [];
     if (!trades.length) {
-      html += `<div class="cal-cell"><div class="day-num">${day}</div><div class="day-ops">Sin operaciones</div></div>`;
+      html += `<div class="day"><div class="number">${day}</div><div class="muted" style="margin-top:15px;">Sin operaciones</div></div>`;
       continue;
     }
     const stats = tradeStats(trades);
-    const cls = stats.total > 0 ? "green" : stats.total < 0 ? "red" : "";
-    html += `<div class="cal-cell">
-      <div class="day-num">${day}</div>
-      <div class="day-result ${cls}">${fmtUSD(stats.total)}</div>
-      <div class="day-ops">${stats.n} ops · ${stats.wins}G / ${stats.losses}P</div>
+    const cls = stats.total >= 0 ? "ok" : "bad";
+    html += `<div class="day">
+      <div class="number">${day}</div>
+      <div class="result ${cls}">${fmtUSD(stats.total)}</div>
+      <div class="muted">${stats.n} ops · ${stats.wins}G / ${stats.losses}P</div>
     </div>`;
   }
   grid.innerHTML = html;
