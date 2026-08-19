@@ -25,9 +25,9 @@
   <div style="overflow-x:auto;">
     <table>
       <thead>
-        <tr><th>Fecha y hora local</th><th>Posición</th><th>Volumen</th><th>Precio de salida</th><th>Resultado neto</th></tr>
+        <tr><th>Fecha y hora local</th><th>Posición</th><th>Tipo</th><th>Volumen</th><th>Precio de salida</th><th>Resultado neto</th></tr>
       </thead>
-      <tbody id="body"><tr><td colspan="5" class="loading">Cargando…</td></tr></tbody>
+      <tbody id="body"><tr><td colspan="6" class="loading">Cargando…</td></tr></tbody>
     </table>
   </div>
 </section>
@@ -46,7 +46,7 @@ async function load() {
     render();
   } catch (err) {
     showError("err", err);
-    document.getElementById("body").innerHTML = `<tr><td colspan="5" class="muted">No se pudo cargar.</td></tr>`;
+    document.getElementById("body").innerHTML = `<tr><td colspan="6" class="muted">No se pudo cargar.</td></tr>`;
   }
 }
 
@@ -62,13 +62,14 @@ function render() {
 
   const tbody = document.getElementById("body");
   if (!allTrades.length) {
-    tbody.innerHTML = `<tr><td colspan="5" class="muted">Sin operaciones cerradas todavía.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="muted">Sin operaciones cerradas todavía.</td></tr>`;
     return;
   }
   tbody.innerHTML = allTrades.map((t) => `
     <tr>
       <td>${fmtLocalDateTime(t.time)}</td>
       <td>${t.position_id}</td>
+      <td class="${t.side === "compra" ? "ok" : "bad"}">${sideLabel(t.side)}</td>
       <td>${t.volume}</td>
       <td>${t.price}</td>
       <td class="${t.net > 0 ? "ok" : t.net < 0 ? "bad" : ""}">${fmtUSD(t.net)}</td>
@@ -76,9 +77,9 @@ function render() {
 }
 
 document.getElementById("btnExport").addEventListener("click", () => {
-  const header = "fecha_local,posicion,volumen,precio,resultado_neto\n";
+  const header = "fecha_local,posicion,tipo,volumen,precio,resultado_neto\n";
   const rows = allTrades.map((t) =>
-    [fmtLocalDateTime(t.time), t.position_id, t.volume, t.price, t.net.toFixed(2)].join(",")
+    [fmtLocalDateTime(t.time), t.position_id, sideLabel(t.side), t.volume, t.price, t.net.toFixed(2)].join(",")
   ).join("\n");
   const blob = new Blob(["﻿" + header + rows], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);

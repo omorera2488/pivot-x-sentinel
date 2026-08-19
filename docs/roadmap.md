@@ -62,11 +62,15 @@ Especificación formal: [docs/spec-estrategia.md](spec-estrategia.md). Código P
 
 **Criterio de aceptación:** la especificación es lo bastante precisa como para que dos implementaciones independientes, corriendo sobre los mismos datos, produzcan exactamente los mismos números.
 
+> **Enmienda (2026-08-19):** el punto "usando el bloque anterior ya cerrado" de arriba quedó revertido a pedido explícito del usuario — el motor ahora usa el bloque HTF **en formación** (igual a `usarCausal=true` del Pine de referencia, auto-armado incluido), para tener paridad exacta con lo que se ve en TradingView. Detalle completo en `docs/spec-estrategia.md` (control de cambios al tope) y en la memoria del proyecto (`pivot-x-sentinel-tv-reference-mismatch`). **Esto invalida el barrido de la Fase 3 de abajo como validación del comportamiento actual** — ese barrido corrió con la lógica vieja (bloque anterior cerrado), que ya no es la que ejecuta el bot.
+
 ---
 
-## Fase 3 — Backtest de Oro con costos reales ❌ CRITERIO NO CUMPLIDO (M5)
+## Fase 3 — Backtest de Oro con costos reales ❌ CRITERIO NO CUMPLIDO (M5) — ⚠️ además, corrido con lógica HTF ya reemplazada (ver enmienda de Fase 2)
 
 Especificación: [docs/spec-backtest.md](spec-backtest.md). Motor implementado en [/backtests](../backtests), checksum mecánico pasado, barrido completo de 3.780 combinaciones corrido sobre M5 real con costos en vivo. **Resultado: sin edge robusto** — el detalle completo está en `spec-backtest.md` §8 ("Resultados del primer barrido"). No se cumple el criterio de aceptación de la fase; no se pasa a Fase 4 hasta decidir cómo seguir (redesign, otro timeframe, u otra dirección).
+
+**⚠️ Este resultado quedó desactualizado el 2026-08-19:** el barrido corrió contra `bucket_levels()` con "bloque anterior cerrado". Esa función se reemplazó (ver enmienda de Fase 2) por "bloque en formación" (paridad con TradingView `usarCausal=true`). El bot en vivo (Fase 4) YA corre con la lógica nueva desde ese momento — el backtest de Fase 3, no. Repetir el barrido con la lógica nueva es trabajo pendiente, no hecho todavía.
 
 **Objetivo:** validar si existe una ventaja (edge) real en Oro después de costos, antes de escribir una sola línea del bot en vivo.
 
@@ -154,7 +158,7 @@ Especificación: [docs/spec-panel.md](spec-panel.md). Implementado en [/panel](.
 | 0 — Fundamentos | ✅ Completada |
 | 1 — Repositorio y esqueleto | ✅ Completada |
 | 2 — Especificación funcional | ✅ Completada |
-| 3 — Backtest de Oro | ❌ Corrido — sin edge robusto en M5, ver spec-backtest.md §8 |
+| 3 — Backtest de Oro | ❌ Corrido — sin edge robusto en M5, ver spec-backtest.md §8. ⚠️ Desactualizado desde el 2026-08-19: corrió con la lógica HTF vieja (bloque anterior cerrado), reemplazada — no repetido aún con la nueva |
 | 4 — Ejecución en vivo | ✅ Implementada, opera en vivo por defecto (sin parámetros validados de Fase 3) |
 | 5 — API local | ✅ Completada |
 | 6 — Panel web | ✅ Completada |

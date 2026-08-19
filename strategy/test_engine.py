@@ -97,11 +97,14 @@ def test_a_and_b_fill_priority_and_tie_break():
     print("  B) empate SL/TP misma barra -> gana el SL: OK")
 
 
-def test_c_bucket_no_self_arm():
+def test_c_bucket_matches_tradingview_causal():
+    # docs/spec-estrategia.md #3.3 (enmienda): resistencia/soporte replican
+    # runHigh/runLow de basecode_tradingview con usarCausal=true -- el
+    # extremo del bloque QUE SE ESTA FORMANDO, actualizado barra a barra.
     # 3 buckets de 5 minutos, velas de 1 minuto: bars 0-4 = bucket 0,
-    # 5-9 = bucket 1, 10-14 = bucket 2. Dentro de cada bucket el high/low
-    # hacen un nuevo extremo en CADA barra (el escenario que gatillaba el bug
-    # original: comparar el bloque contra si mismo).
+    # 5-9 = bucket 1, 10-14 = bucket 2. high/low hacen un nuevo extremo en
+    # CADA barra a proposito -- este es el escenario que se decidio replicar
+    # (ver #3.2), no evitar.
     n = 15
     time_utc = _times(n)
     high = 100.0 + np.arange(n, dtype=float)   # sube en cada barra, sin excepcion
@@ -109,26 +112,31 @@ def test_c_bucket_no_self_arm():
 
     resistencia, soporte = bucket_levels(time_utc, high, low, periodos_min=5)
 
-    # bucket 0 (bars 0-4): no hay bloque anterior -> nunca hay nivel de referencia
-    assert np.all(np.isnan(resistencia[0:5])), "Test C: bucket 0 no deberia tener resistencia (sin bloque previo)"
-    assert np.all(np.isnan(soporte[0:5])), "Test C: bucket 0 no deberia tener soporte (sin bloque previo)"
+    # sin periodo de calentamiento: desde la primera barra ya hay un nivel
+    # (el propio high/low de esa barra, igual que runHigh/runLow en Pine).
+    assert not np.any(np.isnan(resistencia)), "Test C: resistencia nunca deberia ser NaN (runHigh arranca en la barra 0)"
+    assert not np.any(np.isnan(soporte)), "Test C: soporte nunca deberia ser NaN (runLow arranca en la barra 0)"
+    assert resistencia[0] == high[0] and soporte[0] == low[0]
 
-    # bucket 1 (bars 5-9): resistencia/soporte = high/low FINAL y FIJO del bucket 0,
-    # constante durante todo el bucket 1 aunque high seguira subiendo barra a barra.
-    bucket0_final_high = high[4]
-    bucket0_final_low = low[4]
-    assert np.all(resistencia[5:10] == bucket0_final_high), "Test C: resistencia del bucket 1 debe ser fija = high final del bucket 0"
-    assert np.all(soporte[5:10] == bucket0_final_low), "Test C: soporte del bucket 1 debe ser fijo = low final del bucket 0"
-    # el punto central del bug: NO debe ir cambiando bar a bar dentro del bucket 1
-    assert len(set(resistencia[5:10].tolist())) == 1, "Test C: resistencia no deberia variar dentro del mismo bucket (bug de autoarmado)"
+    # dentro de cada bucket, resistencia/soporte SIGUEN al maximo/minimo
+    # acumulado de ESE mismo bucket, barra a barra (no un valor fijo).
+    for b_start, b_end in [(0, 5), (5, 10), (10, 15)]:
+        expected_res = np.maximum.accumulate(high[b_start:b_end])
+        expected_sop = np.minimum.accumulate(low[b_start:b_end])
+        assert np.array_equal(resistencia[b_start:b_end], expected_res), \
+            "Test C: resistencia debe ser el maximo acumulado del bloque en formacion"
+        assert np.array_equal(soporte[b_start:b_end], expected_sop), \
+            "Test C: soporte debe ser el minimo acumulado del bloque en formacion"
 
-    # bucket 2 (bars 10-14): ahora la referencia es el bucket 1 (que a su vez
-    # siguio subiendo en cada barra) -- prueba que el "cierre" del bloque
-    # anterior toma su extremo FINAL, no el primero.
-    bucket1_final_high = high[9]
-    assert np.all(resistencia[10:15] == bucket1_final_high), "Test C: resistencia del bucket 2 debe ser el high final del bucket 1"
+    # cada barra hace nuevo high dentro del bucket -> high[i] == resistencia[i]
+    # siempre (la auto-comparacion de #3.2, replicada a proposito).
+    assert np.array_equal(resistencia, high), "Test C: con high creciente, resistencia debe igualar high en cada barra (auto-armado esperado)"
 
-    print("  C) el bloque HTF nunca se autoarma (resistencia/soporte fijos del bloque anterior cerrado): OK")
+    # al cruzar a un bucket nuevo, resistencia arranca de nuevo desde el high
+    # de la PRIMERA barra de ese bucket (no arrastra el bloque anterior).
+    assert resistencia[5] == high[5] and resistencia[10] == high[10]
+
+    print("  C) resistencia/soporte = extremo del bloque EN FORMACION (igual a TradingView usarCausal=true): OK")
 
 
 def test_d_concurrency_limit_blocks_second_signal():
@@ -292,7 +300,7 @@ def test_e_profiles():
 if __name__ == "__main__":
     print("Checksum mecanico del motor (docs/spec-backtest.md #6)\n")
     test_a_and_b_fill_priority_and_tie_break()
-    test_c_bucket_no_self_arm()
+    test_c_bucket_matches_tradingview_causal()
     test_d_concurrency_limit_blocks_second_signal()
     test_e_profiles()
     test_f_entrada_viva()

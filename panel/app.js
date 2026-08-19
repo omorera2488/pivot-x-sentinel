@@ -82,6 +82,8 @@ function clearError(elId) {
 // entry===1 (DEAL_ENTRY_OUT), que es donde MT5 asienta el profit/swap/
 // comision realizado de la operacion completa.
 const DEAL_ENTRY_OUT = 1;
+const DEAL_TYPE_SELL = 1; // el deal DE CIERRE es lo opuesto a como se abrio la posicion:
+                          // cerrar una compra se hace vendiendo (type=SELL) y viceversa.
 
 function closedTrades(historyDeals) {
   return (historyDeals || [])
@@ -89,8 +91,13 @@ function closedTrades(historyDeals) {
     .map((d) => ({
       ...d,
       net: (d.profit || 0) + (d.swap || 0) + (d.commission || 0) + (d.fee || 0),
+      side: d.type === DEAL_TYPE_SELL ? "compra" : "venta",
     }))
     .sort((a, b) => a.time - b.time);
+}
+
+function sideLabel(side) {
+  return side === "compra" ? "Compra" : "Venta";
 }
 
 function tradeStats(trades) {

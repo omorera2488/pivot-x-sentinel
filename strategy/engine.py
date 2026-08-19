@@ -126,25 +126,34 @@ def ema(close: np.ndarray, period: int) -> np.ndarray:
 
 
 def bucket_levels(time_utc: np.ndarray, high: np.ndarray, low: np.ndarray, periodos_min: int):
-    """resistencia[i]/soporte[i] = high/low del bloque HTF ANTERIOR ya cerrado.
-    Ver docs/spec-estrategia.md #3.3 (correccion del bug de autoarmado)."""
+    """resistencia[i]/soporte[i] = high/low ACUMULADO del bloque HTF QUE SE
+    ESTA FORMANDO en la barra i, actualizado barra a barra dentro del bloque.
+    Replica bit a bit `runHigh`/`runLow` con `usarCausal=true` del Pine de
+    referencia (basecode_tradingview/*.txt) -- ver docs/spec-estrategia.md
+    #3.3 (enmienda: decision explicita de reproducir la misma logica que
+    corre en TradingView, en vez de la version con bloque anterior cerrado
+    usada antes de esa enmienda).
+
+    OJO: esto reintroduce a proposito el "auto-armado" descrito en #3.2 --
+    dentro del mismo bloque, cada nuevo maximo/minimo local vuelve a cumplir
+    high[i] >= resistencia[i] (o low[i] <= soporte[i]) porque resistencia[i]
+    se acaba de actualizar con ese mismo high[i]. No es un bug de esta
+    funcion, es el comportamiento que se decidio replicar."""
     n = len(time_utc)
     bucket_len_s = periodos_min * 60
     bucket_id = time_utc // bucket_len_s
 
-    prev_high = np.full(n, np.nan)
-    prev_low = np.full(n, np.nan)
+    run_high = np.empty(n)
+    run_low = np.empty(n)
 
     cur_bucket = bucket_id[0]
     cur_high = high[0]
     cur_low = low[0]
-    have_prev = False
-    ph = pl = math.nan
+    run_high[0] = cur_high
+    run_low[0] = cur_low
 
-    for i in range(n):
+    for i in range(1, n):
         if bucket_id[i] != cur_bucket:
-            ph, pl = cur_high, cur_low
-            have_prev = True
             cur_bucket = bucket_id[i]
             cur_high = high[i]
             cur_low = low[i]
@@ -153,11 +162,10 @@ def bucket_levels(time_utc: np.ndarray, high: np.ndarray, low: np.ndarray, perio
                 cur_high = high[i]
             if low[i] < cur_low:
                 cur_low = low[i]
-        if have_prev:
-            prev_high[i] = ph
-            prev_low[i] = pl
+        run_high[i] = cur_high
+        run_low[i] = cur_low
 
-    return prev_high, prev_low
+    return run_high, run_low
 
 
 def _server_date(ts: int):
@@ -240,11 +248,21 @@ def run_backtest(
         elif outcome == "timeout":
             counters.n_open_timeout += 1
 
-    for i in range(1, n):
+    for i in range(n):
         r_i, s_i = resistencia[i], soporte[i]
 
-        down = close[i - 1] >= ema_line[i - 1] and close[i] < ema_line[i]
-        up = close[i - 1] <= ema_line[i - 1] and close[i] > ema_line[i]
+        # bar 0: no hay i-1, nunca puede haber cruce -- pero el armado SI se
+        # evalua (igual que LiveSignalEngine.process_bar, que corre la parte
+        # de armado en toda barra sin importar si close_prev existe). Con el
+        # bloque en formacion (#3.3 enmienda), resistencia[0]=high[0] y
+        # soporte[0]=low[0] ya NO son NaN -- si el loop arrancara en i=1 como
+        # antes, bar 0 se saltearia el armado por completo y el motor batch
+        # divergiria del incremental (ver strategy/test_engine.py test_g).
+        if i == 0:
+            down = up = False
+        else:
+            down = close[i - 1] >= ema_line[i - 1] and close[i] < ema_line[i]
+            up = close[i - 1] <= ema_line[i - 1] and close[i] > ema_line[i]
         senal_venta = armado_venta and down
         senal_compra = armado_compra and up
 

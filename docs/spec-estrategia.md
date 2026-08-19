@@ -2,7 +2,9 @@
 
 Este documento es la especificación formal de la estrategia, derivada del código Pine original en [`/basecode_tradingview`](../basecode_tradingview) (`1m EMA y Pivotes ZS — trade boxes.txt` y `5m EMA y Pivotes ZS — trade boxes.txt`, idénticos en lógica, distintos solo en los valores por defecto de sus inputs).
 
-Es independiente de lenguaje: cualquier implementación (backtest en Python, motor en vivo sobre MT5) que siga esta especificación al pie de la letra debe producir, sobre los mismos datos de entrada, exactamente los mismos números. Donde el original tiene un comportamiento repintante, ambiguo o con bug, esta especificación define la versión corregida y solo esa — no se implementa el modo repintante del original, que solo tenía sentido como referencia visual en TradingView.
+Es independiente de lenguaje: cualquier implementación (backtest en Python, motor en vivo sobre MT5) que siga esta especificación al pie de la letra debe producir, sobre los mismos datos de entrada, exactamente los mismos números. No se implementa el modo repintante del original (`usarCausal=false`, `request.security` con lookahead) — eso requiere datos del futuro y solo tiene sentido como referencia visual en TradingView, es imposible de replicar en un bot en vivo.
+
+> **Enmienda (2026-08-19):** §3 originalmente definía resistencia/soporte como el bloque HTF **anterior ya cerrado** (corrigiendo el auto-armado trivial del Pine con `usarCausal=true`, ver §3.2). A pedido explícito del usuario, se revirtió esa corrección: el motor (`strategy/engine.py`, `strategy/live_signal.py`) ahora replica bit a bit `usarCausal=true` del Pine de referencia — el bloque **en formación**, con el auto-armado incluido — porque es la única variante del indicador de TradingView que el usuario puede correr en vivo (el modo repintante es literalmente imposible de correr en vivo) y se quiere paridad exacta entre lo que se ve en el chart y lo que hace el bot. §3.2/§3.3 abajo quedan como estaban (documentan el comportamiento tal cual es, ya no como "bug a corregir" sino como la lógica vigente); ver [[pivot-x-sentinel-tv-reference-mismatch]] en la memoria del proyecto para el detalle de la decisión.
 
 ---
 
@@ -10,8 +12,8 @@ Es independiente de lenguaje: cualquier implementación (backtest en Python, mot
 
 | Punto | Original (Pine) | Esta especificación |
 |---|---|---|
-| Nivel de resistencia/soporte | `usarCausal=false` (default): `request.security(..., lookahead_on)`, repinta. `usarCausal=true`: extremo del bloque **que se está formando**, se autoarma trivialmente el primer bar de cada bloque (bug, ver §3). | Extremo del **bloque HTF anterior ya cerrado**. No repinta, no se autoarma nunca contra sí mismo. |
-| Stop | `runHigh/runLow` (extremo del bloque en formación) en el momento de la señal. | Mismo valor que resistencia/soporte (extremo del bloque anterior cerrado) ± buffer — ver §3, ya no hace falta trackear un extremo en formación aparte. |
+| Nivel de resistencia/soporte | `usarCausal=false` (default): `request.security(..., lookahead_on)`, repinta. `usarCausal=true`: extremo del bloque **que se está formando**, se autoarma en cada nuevo máximo/mínimo local del bloque (ver §3.2). | Igual a `usarCausal=true`: extremo del **bloque HTF en formación**, actualizado barra a barra (enmienda 2026-08-19 — ver nota arriba). No repinta (no usa `request.security`/lookahead), pero sí se autoarma como el original. |
+| Stop | `runHigh/runLow` (extremo del bloque en formación) en el momento de la señal. | Mismo valor que resistencia/soporte (extremo del bloque en formación en la barra de señal) ± buffer — ver §3, un solo extremo trackeado, igual que el original. |
 | Concurrencia | Sin límite: se puede acumular un número arbitrario de operaciones pendientes/abiertas en la misma dirección. | Límite explícito configurable (`maxConcurrentPorDireccion`), ver §6. |
 | Cierre por tiempo máximo de una posición abierta | Sin definir un precio de salida real (el original es un indicador visual, no ejecuta órdenes). | Definido explícitamente para backtest/vivo — ver §5.4. |
 | Buffer del stop | Constante en basis points, calibrada para forex (`0.4 bp` por defecto). | Mismo mecanismo (% del nivel), valor por defecto a recalibrar empíricamente en Fase 3 para Oro. |
@@ -53,9 +55,11 @@ Todas las barras del timeframe base cuyo `time[i]` cae en el mismo `bucket_id` p
 
 **Cómo medir el offset del bróker, sin asumir de antemano cuál es:** al conectar, pedir un tick reciente con `symbol_info_tick` (trae su propio timestamp de servidor) y compararlo contra el reloj UTC del sistema en el instante exacto de esa consulta. La diferencia es el offset horario de ESE bróker en ESE momento — funciona igual sin importar qué bróker sea, y no depende de tener hardcodeada la zona horaria de ningún servidor en particular. Este mismo mecanismo resuelve tanto la ingesta histórica (Fase 3) como el arranque del motor en vivo (Fase 4) contra una cuenta nueva sin configuración manual previa. Nota: el offset puede cambiar con el horario de verano de la zona del bróker, así que conviene re-medirlo en cada conexión, no cachearlo indefinidamente.
 
-### 3.2 Bug corregido
+### 3.2 Comportamiento de `usarCausal=true` (adoptado, no "corregido")
 
-En el original, `usarCausal=true` calcula `resistencia`/`soporte` como el máximo/mínimo **del bloque que se está formando en este mismo instante**:
+> Hasta la enmienda del 2026-08-19 esta sección describía esto como un bug a corregir (ver control de cambios al tope del documento). Se deja la descripción tal cual porque sigue siendo exacta — lo único que cambió es la conclusión: en vez de evitarlo, el motor lo reproduce a propósito, porque es lo mismo que hace `usarCausal=true` en el indicador real que corre en TradingView.
+
+`usarCausal=true` calcula `resistencia`/`soporte` como el máximo/mínimo **del bloque que se está formando en este mismo instante**:
 
 ```
 si es primer bar del bloque: runHigh := high[i]; runLow := low[i]
@@ -67,25 +71,27 @@ si high[i] >= resistencia: armadoVenta := true
 si low[i]  <= soporte:     armadoCompra := true
 ```
 
-El problema no se limita a la primera barra del bloque: `runHigh := max(runHigh, high[i])` (y su equivalente para `runLow`) se recalcula en **cualquier barra** que haga un nuevo máximo o mínimo dentro del bloque en formación, no solo en la barra de apertura. Cada vez que eso ocurre, `resistencia`/`soporte` se actualiza al `high[i]`/`low[i]` de esa misma barra, y la comparación `high[i] >= resistencia` (o `low[i] <= soporte`) vuelve a ser una autocomparación trivialmente verdadera. **Resultado: `armadoVenta` y `armadoCompra` se re-arman —a menudo simultáneamente— en cada barra que expande el rango del bloque en formación, durante todo el tiempo que dure el bloque, sin relación con ningún nivel real** — es ruido, no señal, y no un problema acotado a la barra de apertura.
+El efecto no se limita a la primera barra del bloque: `runHigh := max(runHigh, high[i])` (y su equivalente para `runLow`) se recalcula en **cualquier barra** que haga un nuevo máximo o mínimo dentro del bloque en formación, no solo en la barra de apertura. Cada vez que eso ocurre, `resistencia`/`soporte` se actualiza al `high[i]`/`low[i]` de esa misma barra, y la comparación `high[i] >= resistencia` (o `low[i] <= soporte`) es una autocomparación trivialmente verdadera. **Resultado: `armadoVenta` y `armadoCompra` se re-arman —a menudo simultáneamente— en cada barra que expande el rango del bloque en formación, durante todo el tiempo que dure el bloque.** Es una fuente real de señales frecuentes, no un problema acotado a la barra de apertura — quien use esta especificación para razonar sobre la frecuencia de señales debe tenerlo presente.
 
-### 3.3 Corrección
+### 3.3 Implementación
 
-`resistencia`/`soporte` se calculan a partir del **bloque anterior, ya cerrado** — un valor fijo durante todo el bloque actual, que no puede compararse contra sí mismo:
+`resistencia`/`soporte` se calculan como el extremo acumulado del **bloque HTF en formación**, actualizado barra a barra, replicando `runHigh`/`runLow` del Pine de referencia (`usarCausal=true`) sin el componente de lookahead (`request.security`) del modo default:
 
 ```
-al cerrar un bloque:
-    prevHigh := high máximo observado durante ese bloque
-    prevLow  := low mínimo observado durante ese bloque
+al empezar un bloque nuevo (barra i es la primera de ese bloque, incluida la barra 0 de toda la serie):
+    runHigh := high[i]
+    runLow  := low[i]
+si no (misma barra dentro del bloque en curso):
+    runHigh := max(runHigh, high[i])
+    runLow  := min(runLow, low[i])
 
-para cada barra i (mientras su bloque sigue abierto):
-    resistencia[i] := prevHigh   (del bloque anterior)
-    soporte[i]     := prevLow    (del bloque anterior)
+resistencia[i] := runHigh
+soporte[i]     := runLow
 ```
 
-Antes de que se cierre el primer bloque de toda la serie, `resistencia`/`soporte` son indefinidos (`NaN`) y no puede haber armado — hay un período de calentamiento de hasta `periodos` minutos al arrancar el bot o el backtest.
+No hay período de calentamiento: desde la primera barra de toda la serie ya hay un nivel de referencia (el propio high/low de esa barra) — a diferencia de la versión con bloque anterior cerrado (que sí tenía un período sin nivel hasta cerrar el primer bloque), acá `resistencia`/`soporte` nunca son `NaN`.
 
-Esta corrección resuelve a la vez el repintado (el original repintaba en el modo default por leer el bloque en formación vía `request.security` con lookahead) y el bug de autoarmado — ambos eran síntoma de usar el bloque equivocado (el que se está formando) como referencia.
+Esta versión no repinta (nunca usa `request.security`/lookahead — el nivel de la barra `i` solo depende de datos de la barra `i` o anteriores), pero sí conserva el auto-armado de §3.2 — ambos son propiedades independientes del mecanismo, no la misma cosa: no repintar es sobre qué datos se usan (pasado vs. futuro), auto-armarse es sobre qué nivel se compara contra qué (el bloque en curso contra sí mismo). Esta especificación elige no repintar (imposible de operar en vivo si repintara) y sí auto-armarse (para tener paridad exacta con el indicador de TradingView, decisión explícita del usuario por sobre la alternativa de bloque anterior cerrado — ver control de cambios al tope del documento).
 
 ---
 
@@ -153,7 +159,7 @@ riesgo  = |stop - entry|
 target  = dir < 0 ? entry - rr * riesgo : entry + rr * riesgo
 ```
 
-`resistencia[i]`/`soporte[i]` en el momento de la señal son el mismo valor congelado del bloque anterior descrito en §3 — no hace falta trackear por separado un "extremo en formación" como en el original: al ya no repintar, el nivel usado para armar y el nivel usado para el stop son el mismo, todo el tiempo, durante el bloque completo.
+`resistencia[i]`/`soporte[i]` en el momento de la señal son el mismo extremo del bloque en formación descrito en §3 — el nivel usado para armar y el nivel usado para el stop son el mismo, en esa barra puntual (a diferencia del original, donde el stop toma `runHigh/runLow` en el instante de la señal pero el nivel PLOTEADO puede seguir moviéndose después — acá, al congelar `stop` en el momento de la señal como cualquier otro campo de la orden, no hay ambigüedad de cuál valor corresponde).
 
 ---
 
@@ -262,7 +268,7 @@ Propongo `maxConcurrentPorDireccion = 1` como default de partida (una sola opera
 
 El original lleva contadores en vivo que sirven de referencia al portar la lógica: `nSig` (señales), `nFill` (llenadas), `nWin`/`nLoss`, `nNone` (expiradas sin llenar), `nSkip` (descartadas por stop inválido — ahora hay que separar esto de las descartadas por concurrencia), `nOpen` (cerradas por tiempo). El motor de backtest de la Fase 3 debe exponer estos mismos contadores.
 
-**Importante:** esos conteos agregados **no van a coincidir** con los del Pine original corriendo en ninguno de sus dos modos — ni el repintante (`usarCausal=false`) ni el causal con el bug (`usarCausal=true`) — porque esta especificación corrige a propósito el cálculo del bloque HTF (§3.3) y por lo tanto arma y dispara señales en momentos distintos a los dos. Esa diferencia es esperada, no un error de portado. El checksum útil no es "¿el total de `nSig`/`nWin`/`nLoss` coincide con el Pine?", sino verificar, sobre casos puntuales, que las reglas mecánicas del ciclo de vida se cumplen igual: prioridad de llenado antes que expiración (§5.2), empate = gana el SL (§5.3/§5.4), y el resto de las reglas de la §5.5. Si en Fase 3 los números agregados difieren del Pine original, eso por sí solo no es una señal de bug.
+**Importante (actualizado 2026-08-19):** con la enmienda de §3.3, el armado/señal (`nSig`, qué barra dispara y en qué dirección) debería coincidir con `usarCausal=true` del Pine barra a barra — es la misma fórmula. Pero eso NO garantiza que `nFill`/`nWin`/`nLoss`/`nNone`/`nOpen` agregados coincidan exactamente: el ciclo de vida completo de la orden (§5) — prioridad de llenado antes que expiración, empate = gana el SL, el precio de salida al cerrar por tiempo (§5.4, "decisión abierta", no existe en el Pine visual) — es una definición nueva de esta especificación, no algo que el indicador de TradingView calcule (es un indicador visual, no ejecuta ni gestiona órdenes). Tampoco coincide con `usarCausal=false` (repintante, imposible de replicar en vivo). El checksum útil sigue sin ser "¿el total coincide con el Pine?", sino verificar sobre casos puntuales que las reglas mecánicas del ciclo de vida se cumplen (§5.2–§5.5) Y que el armado/señal coincide barra a barra con `usarCausal=true` (este último sí es ahora una expectativa razonable, a diferencia de antes de la enmienda).
 
 ---
 

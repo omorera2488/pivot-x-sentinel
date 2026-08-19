@@ -77,9 +77,9 @@
     <div class="label">Últimas 20 operaciones</div>
     <table>
       <thead>
-        <tr><th>Hora local</th><th>Posición</th><th>Volumen</th><th>Precio</th><th>Resultado neto</th></tr>
+        <tr><th>Hora local</th><th>Posición</th><th>Tipo</th><th>Volumen</th><th>Precio</th><th>Resultado neto</th></tr>
       </thead>
-      <tbody id="tradesBody"><tr><td colspan="5" class="loading">Cargando…</td></tr></tbody>
+      <tbody id="tradesBody"><tr><td colspan="6" class="loading">Cargando…</td></tr></tbody>
     </table>
   </div>
 </section>
@@ -164,13 +164,14 @@ function renderTradesTable(trades) {
   const rows = trades.slice(-20).reverse();
   const tbody = document.getElementById("tradesBody");
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="5" class="muted">Sin operaciones cerradas todavía.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="muted">Sin operaciones cerradas todavía.</td></tr>`;
     return;
   }
   tbody.innerHTML = rows.map((t) => `
     <tr>
       <td>${fmtLocalTime(t.time)}</td>
       <td>${t.position_id}</td>
+      <td class="${t.side === "compra" ? "ok" : "bad"}">${sideLabel(t.side)}</td>
       <td>${t.volume}</td>
       <td>${t.price}</td>
       <td class="${t.net > 0 ? "ok" : t.net < 0 ? "bad" : ""}">${fmtUSD(t.net)}</td>

@@ -55,9 +55,6 @@ class LiveSignalEngine:
         self._cur_bucket = None
         self._cur_high = math.nan
         self._cur_low = math.nan
-        self._prev_high = math.nan
-        self._prev_low = math.nan
-        self._have_prev_bucket = False
 
     def process_bar(self, time_utc: int, high: float, low: float, close: float) -> BarSignal:
         # --- EMA (misma formula que engine.ema: arranca en la primera barra,
@@ -65,13 +62,11 @@ class LiveSignalEngine:
         ema_now = close if self._ema_prev is None else close * self._alpha + self._ema_prev * (1 - self._alpha)
 
         # --- bloque HTF (engine.bucket_levels, incremental) ---
+        # runHigh/runLow del bloque EN FORMACION -- ver docs/spec-estrategia.md
+        # #3.3 (enmienda: replica usarCausal=true del Pine de referencia, no
+        # el bloque anterior cerrado).
         bucket_id = time_utc // self._bucket_len_s
-        if self._cur_bucket is None:
-            self._cur_bucket = bucket_id
-            self._cur_high, self._cur_low = high, low
-        elif bucket_id != self._cur_bucket:
-            self._prev_high, self._prev_low = self._cur_high, self._cur_low
-            self._have_prev_bucket = True
+        if self._cur_bucket is None or bucket_id != self._cur_bucket:
             self._cur_bucket = bucket_id
             self._cur_high, self._cur_low = high, low
         else:
@@ -80,8 +75,8 @@ class LiveSignalEngine:
             if low < self._cur_low:
                 self._cur_low = low
 
-        resistencia = self._prev_high if self._have_prev_bucket else math.nan
-        soporte = self._prev_low if self._have_prev_bucket else math.nan
+        resistencia = self._cur_high
+        soporte = self._cur_low
 
         # --- cruce + señal (con el armado tal como quedo de barras anteriores) ---
         if self._close_prev is None:
