@@ -70,11 +70,12 @@ class StartRequest(BaseModel):
     max_bars_trade: int | None = None
     fixed_lot: float | None = None
     entrada_viva: bool | None = None
+    una_operacion_a_la_vez: bool | None = None
 
     def overrides(self) -> dict:
         fields = ("ema_periods", "periodos_htf_min", "buf_bp", "rr",
                    "max_concurrent_por_direccion", "valid_bars", "orden_viva",
-                   "max_bars_trade", "fixed_lot", "entrada_viva")
+                   "max_bars_trade", "fixed_lot", "entrada_viva", "una_operacion_a_la_vez")
         return {f: v for f in fields if (v := getattr(self, f)) is not None}
 
 

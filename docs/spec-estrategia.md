@@ -256,11 +256,13 @@ Para que dos implementaciones coincidan barra a barra, el orden de evaluación d
 
 ## 6. Reglas de concurrencia (nuevo respecto al original)
 
-El original no limita cuántas operaciones pendientes/abiertas pueden coexistir en la misma dirección — cada señal válida siempre encola una orden nueva, sin mirar el estado de las anteriores.
+El original no limita cuántas operaciones pendientes/abiertas pueden coexistir — cada señal válida siempre encola una orden nueva, sin mirar el estado de las anteriores.
 
-**Regla propuesta:** antes de crear una orden nueva (paso 7 de §5.5), contar cuántas órdenes en estado PENDIENTE + ABIERTA existen ya con la misma dirección (`dir`) que la señal actual. Si el conteo es `>= maxConcurrentPorDireccion`, la señal se descarta (contador propio, distinto del de "stop del lado incorrecto") y no se crea ninguna orden.
+**`unaOperacionALaVez` (default `true`, agregado 2026-08-19 a pedido del usuario):** antes de crear una orden nueva (paso 7 de §5.5), contar cuántas órdenes en estado PENDIENTE + ABIERTA existen ya, **en cualquier dirección** (venta o compra). Si el conteo es `>= 1`, la señal se descarta (contador propio, distinto del de "stop del lado incorrecto") y no se crea ninguna orden — aunque la señal sea válida y de la dirección contraria a la que ya está viva. Es un candado global, no por dirección: con este activado nunca hay más de una operación (pendiente o abierta) al mismo tiempo, sin importar el sentido.
 
-Propongo `maxConcurrentPorDireccion = 1` como default de partida (una sola operación viva por dirección a la vez) — el valor final, igual que R:R y el buffer, se valida empíricamente en la Fase 3. Si no hay objeción se deja así.
+**`maxConcurrentPorDireccion` (default `1`, aplica solo si `unaOperacionALaVez = false`):** el límite vuelve a contarse por dirección — cuántas órdenes PENDIENTE + ABIERTA existen ya con la misma dirección (`dir`) que la señal actual. Si el conteo es `>= maxConcurrentPorDireccion`, la señal se descarta. A diferencia del candado global, esto sí permite tener una venta y una compra vivas al mismo tiempo (cada dirección con su propio cupo).
+
+El valor final de `maxConcurrentPorDireccion` para cuando `unaOperacionALaVez` esté desactivado, igual que R:R y el buffer, se valida empíricamente en la Fase 3.
 
 ---
 

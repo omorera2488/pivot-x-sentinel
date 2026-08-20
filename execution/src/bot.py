@@ -134,6 +134,15 @@ class LiveExecutionBot:
         n_open = sum(1 for p in self.my_positions() if p.type == pos_type_for_dir)
         return n_pend + n_open
 
+    def _effective_concurrency(self, direction: int) -> tuple[int, int]:
+        """(activos, limite) segun params.una_operacion_a_la_vez -- ver
+        spec-estrategia.md #6. Default: cuenta pendientes+abiertas en
+        CUALQUIER direccion contra este magic, tope 1. Desactivado, vuelve
+        al limite de siempre por direccion (max_concurrent_por_direccion)."""
+        if self.params.una_operacion_a_la_vez:
+            return len(self.my_orders()) + len(self.my_positions()), 1
+        return self._concurrency_count(direction), self.params.max_concurrent_por_direccion
+
     # ---- vigilancia de pendientes / abiertas ----------------------------
 
     def _bars_between(self, t_from_server: int, t_to_server: int) -> int:
@@ -270,9 +279,9 @@ class LiveExecutionBot:
             if not signal.valido:
                 self._log(f"Señal descartada: stop del lado incorrecto (dir={signal.dir})")
             else:
-                activos = self._concurrency_count(signal.dir)
-                if activos >= self.params.max_concurrent_por_direccion:
-                    self._log(f"Señal descartada: limite de concurrencia ({activos}/{self.params.max_concurrent_por_direccion})")
+                activos, limite = self._effective_concurrency(signal.dir)
+                if activos >= limite:
+                    self._log(f"Señal descartada: limite de concurrencia ({activos}/{limite})")
                 else:
                     self._place_order(signal.dir, signal.entry, signal.stop, signal.target)
 

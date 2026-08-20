@@ -297,6 +297,53 @@ def test_e_profiles():
     print("  E) seleccion de perfil (1m/5m, alias M1/M5, overrides): OK")
 
 
+def test_h_una_operacion_a_la_vez():
+    # spec-estrategia.md #6 (agregado 2026-08-19): con una_operacion_a_la_vez
+    # (default True), una operacion abierta bloquea CUALQUIER señal nueva,
+    # incluso de la direccion CONTRARIA -- no solo la misma direccion como
+    # max_concurrent_por_direccion. Se arma y llena una compra en bar2/3
+    # (target lejano a proposito, rr=10, para no resolverla sin querer al
+    # armar la venta mas adelante); en bar4 se arma venta (resistencia=150,
+    # sin tocar el target=200 de la compra); en bar5 dispara la señal de
+    # venta con la compra todavia abierta.
+    n = 6
+    time_utc = _times(n)
+    time_server = time_utc.copy()
+
+    close = np.array([98, 99, 101, 100, 140, 135], dtype=float)
+    ema_line = np.array([100, 100, 100, 100, 138, 137], dtype=float)
+    high = np.array([99, 100, 102, 101, 155, 139], dtype=float)
+    low = np.array([97, 85, 100, 99, 138, 134], dtype=float)
+    open_ = close.copy()
+    spread_pts = np.zeros(n)
+
+    resistencia = np.full(n, 150.0)
+    soporte = np.full(n, 90.0)
+
+    base_kwargs = dict(
+        ema_periods=1, periodos_htf_min=999999, buf_bp=0.0, rr=10.0,
+        valid_bars=10, orden_viva=True, max_bars_trade=500, fixed_lot=1.0,
+    )
+
+    # --- modo default: candado global, bloquea la venta aunque sea la direccion contraria ---
+    params_global = StrategyParams(max_concurrent_por_direccion=1, una_operacion_a_la_vez=True, **base_kwargs)
+    res_global = run_backtest(time_utc, time_server, open_, high, low, close, spread_pts,
+                               params_global, ZERO_COST, ema_line=ema_line, resistencia=resistencia, soporte=soporte)
+    assert res_global.counters.n_sig == 2, f"se esperaban 2 señales (compra + venta), hubo {res_global.counters.n_sig}"
+    assert res_global.counters.n_fill == 1, f"solo la compra deberia haberse llenado, n_fill={res_global.counters.n_fill}"
+    assert res_global.counters.n_skip_concurrency == 1, \
+        f"la venta deberia descartarse por el candado global (compra todavia abierta), n_skip_concurrency={res_global.counters.n_skip_concurrency}"
+
+    # --- modo desactivado: vuelve al limite por direccion, la venta SI se encola ---
+    params_per_dir = StrategyParams(max_concurrent_por_direccion=1, una_operacion_a_la_vez=False, **base_kwargs)
+    res_per_dir = run_backtest(time_utc, time_server, open_, high, low, close, spread_pts,
+                                params_per_dir, ZERO_COST, ema_line=ema_line, resistencia=resistencia, soporte=soporte)
+    assert res_per_dir.counters.n_skip_concurrency == 0, \
+        f"con el candado global desactivado, la venta (direccion distinta) no deberia descartarse, n_skip_concurrency={res_per_dir.counters.n_skip_concurrency}"
+
+    print("  H) una_operacion_a_la_vez: candado global bloquea la direccion contraria; desactivado, vuelve al limite por direccion: OK")
+
+
 if __name__ == "__main__":
     print("Checksum mecanico del motor (docs/spec-backtest.md #6)\n")
     test_a_and_b_fill_priority_and_tie_break()
@@ -305,4 +352,5 @@ if __name__ == "__main__":
     test_e_profiles()
     test_f_entrada_viva()
     test_g_live_signal_matches_batch()
+    test_h_una_operacion_a_la_vez()
     print("\nTODO OK — motor batch validado + motor incremental (Fase 4) equivalente.")

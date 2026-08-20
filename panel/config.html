@@ -64,8 +64,12 @@
       <input type="number" id="buf_bp" step="0.1" min="0">
     </label>
     <label class="setting">
+      <b><input type="checkbox" id="una_operacion_a_la_vez"> Una operación a la vez</b>
+      <small>Activado por defecto: mientras haya una operación pendiente o abierta (venta o compra), bloquea cualquier señal nueva, aunque se cumpla la estrategia. Desmarcá esto para permitir varias a la vez, limitadas por "Máx. operaciones concurrentes por dirección" (spec-estrategia.md §6).</small>
+    </label>
+    <label class="setting">
       <b>Máx. operaciones concurrentes por dirección</b>
-      <small>Límite propio de este motor — el Pine original no tenía ninguno (spec-estrategia.md §6).</small>
+      <small id="maxConcurrentHint">Límite propio de este motor — el Pine original no tenía ninguno (spec-estrategia.md §6). Ignorado mientras "Una operación a la vez" esté activado.</small>
       <input type="number" id="max_concurrent_por_direccion" min="1" step="1">
     </label>
 
@@ -120,9 +124,14 @@
 <script>
 const FIELDS = ["symbol", "magic", "poll_interval_s", "live", "ema_periods", "periodos_htf_min",
   "buf_bp", "rr", "max_concurrent_por_direccion", "valid_bars", "orden_viva", "max_bars_trade",
-  "fixed_lot", "entrada_viva"];
+  "fixed_lot", "entrada_viva", "una_operacion_a_la_vez"];
 
 function getEl(id) { return document.getElementById(id); }
+
+function syncConcurrencyToggle() {
+  const unaSola = getEl("una_operacion_a_la_vez").checked;
+  getEl("max_concurrent_por_direccion").disabled = unaSola;
+}
 
 function readForm() {
   const cfg = { profile: getEl("profile").value };
@@ -141,6 +150,7 @@ function fillForm(cfg) {
     if (el.type === "checkbox") el.checked = !!cfg[f];
     else el.value = cfg[f];
   }
+  syncConcurrencyToggle();
 }
 
 let profileDefaults = {};
@@ -163,7 +173,7 @@ async function init() {
   if (pending) {
     fillForm(pending);
   } else {
-    fillForm({ profile: "5m", symbol: "XAUUSDm", magic: 900001, poll_interval_s: 10, live: true, ...profileDefaults["5m"] });
+    fillForm({ profile: "5m", symbol: "XAUUSDm", magic: 900001, poll_interval_s: 10, live: true, una_operacion_a_la_vez: true, ...profileDefaults["5m"] });
   }
 
   try {
@@ -182,6 +192,7 @@ async function init() {
 }
 
 getEl("profile").addEventListener("change", (e) => applyProfileDefaults(e.target.value, true));
+getEl("una_operacion_a_la_vez").addEventListener("change", syncConcurrencyToggle);
 
 getEl("cfgForm").addEventListener("submit", async (e) => {
   e.preventDefault();

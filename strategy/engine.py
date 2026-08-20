@@ -41,6 +41,10 @@ class StrategyParams:
     max_bars_trade: int = 500
     fixed_lot: float = 0.01
     entrada_viva: bool = False     # spec-estrategia.md #4.3 -- variante del Pine, default False
+    una_operacion_a_la_vez: bool = True  # spec-estrategia.md #6 -- default: bloquea CUALQUIER
+                                          # senal nueva (venta o compra) mientras haya una pendiente/
+                                          # abierta en cualquier direccion. False vuelve al limite
+                                          # por direccion (max_concurrent_por_direccion).
 
 
 @dataclass
@@ -363,8 +367,17 @@ def run_backtest(
             if not valid:
                 counters.n_skip_stop += 1
             else:
-                active = sum(1 for po in pending if po["dir"] == d) + sum(1 for pos in open_pos if pos["dir"] == d)
-                if active >= params.max_concurrent_por_direccion:
+                # spec-estrategia.md #6: por defecto (una_operacion_a_la_vez=True)
+                # el limite es GLOBAL -- cuenta pendientes+abiertas en CUALQUIER
+                # direccion, tope 1. Desactivado, vuelve al limite por direccion
+                # de siempre (max_concurrent_por_direccion).
+                if params.una_operacion_a_la_vez:
+                    active = len(pending) + len(open_pos)
+                    limite = 1
+                else:
+                    active = sum(1 for po in pending if po["dir"] == d) + sum(1 for pos in open_pos if pos["dir"] == d)
+                    limite = params.max_concurrent_por_direccion
+                if active >= limite:
                     counters.n_skip_concurrency += 1
                 else:
                     pending.append({"dir": d, "entry": entry, "stop": stop, "target": target, "born": i})
