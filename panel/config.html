@@ -169,12 +169,16 @@ async function init() {
     showError("err", err);
   }
 
+  // Los defaults van COMO BASE, no como fallback exclusivo del caso "sin
+  // config guardada": si alguien tiene un pending viejo en localStorage de
+  // antes de que existiera un campo nuevo (ej. una_operacion_a_la_vez), ese
+  // campo faltante tiene que caer en su default (true), no quedar "sin
+  // marcar" porque el checkbox del HTML arranca asi -- eso guardaria false
+  // de verdad si el usuario aprieta Guardar sin darse cuenta.
+  const defaults = { profile: "5m", symbol: "XAUUSDm", magic: 900001, poll_interval_s: 10,
+                      live: true, una_operacion_a_la_vez: true, ...profileDefaults["5m"] };
   const pending = loadPendingConfig();
-  if (pending) {
-    fillForm(pending);
-  } else {
-    fillForm({ profile: "5m", symbol: "XAUUSDm", magic: 900001, poll_interval_s: 10, live: true, una_operacion_a_la_vez: true, ...profileDefaults["5m"] });
-  }
+  fillForm(pending ? { ...defaults, ...pending } : defaults);
 
   try {
     const s = await apiGet("/status");
