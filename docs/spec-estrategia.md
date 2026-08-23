@@ -203,6 +203,8 @@ si no tocada:
 
 Nota: en modo `ordenViva = false` (ventana fija), el precio alcanzando el nivel de stop **no** invalida la orden — solo el paso del tiempo (`validBars`) o el TP-antes-de-llenarse la matan. Es una diferencia real de comportamiento entre los dos modos, no solo de duración.
 
+**En vivo (Fase 4, agregado 2026-08-23):** este cálculo por-barra es exacto para el backtest (§5.5 corre una vez por vela cerrada), pero contra un bróker real deja una ventana de riesgo: `_watch_pending` en `execution/src/bot.py` solo corre cuando cierra una vela nueva (hasta `bar_seconds` de exposición — 5 minutos en el perfil `5m`), mientras el precio se sigue moviendo en tiempo real dentro de esa vela. En cuenta demo se observó el caso concreto (2026-08-23): el precio toca `target` dentro de la vela en formación sin que la orden límite se haya llenado, se devuelve, y llena esa misma orden de verdad en el bróker — todo antes de que el bot llegara a cancelarla como "target alcanzado sin llenarse". Corrección: `_watch_pending_live` evalúa `tpAntes`/`muerto` contra el **tick en vivo** (`symbol_info_tick`, usando `bid`) en cada ciclo del loop de polling (`poll_interval_s`, 10s típico), reduciendo la ventana de "hasta `bar_seconds`" a "hasta `poll_interval_s`". `caduca`/`maxBarsTrade` sigue evaluándose solo por vela cerrada — depende de conteo de barras reales (`_bars_between`, ver spec-live-execution.md), no de precio, así que una vela intermedia no cambia el resultado. `_watch_pending` (por vela cerrada) se mantiene sin cambios como red de seguridad redundante.
+
 ### 5.3 Llenado (misma barra en que `tocada = true`)
 
 ```

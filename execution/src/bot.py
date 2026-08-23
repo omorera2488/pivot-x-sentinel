@@ -8,6 +8,17 @@ posiciones por tiempo maximo, y calcula el limite de concurrencia contra
 ordenes/posiciones REALES del broker — nunca contra una copia en memoria
 (docs/spec-live-execution.md #1).
 
+Vigilancia de pendientes en DOS frecuencias (agregado 2026-08-23, ver
+`_watch_pending_live`): tpAntes/muerto (spec-estrategia.md #5.2) se evaluan
+por TICK en vivo en cada ciclo de `run()` (`poll_interval_s`, 10s tipico) y
+tambien por vela CERRADA (`_watch_pending`, hasta `bar_seconds`, 5min en el
+perfil 5m -- mas lento, pero es el unico que ademas cubre `caduca`/
+`maxBarsTrade`, que depende de conteo de barras, no de precio). El chequeo
+por tick existe para cerrar una ventana real: sin el, el precio podia tocar
+el TP dentro de la vela en formacion sin llenar la orden, devolverse, y
+llenarla de verdad en el broker -- todo antes de que `_watch_pending`
+llegara a cancelarla (visto en cuenta demo el 2026-08-23).
+
 Nota sobre metadatos: a diferencia de lo que asumia el borrador de la spec
 (#6), MT5 SI guarda todo lo que hace falta directamente en la orden/posicion
 (`time_setup`/`time` = born/open, `sl`, `tp`, `price_open`, `type` = direccion)
@@ -195,6 +206,53 @@ class LiveExecutionBot:
                 self._log(f"Pendiente #{o.ticket} ({'venta' if d < 0 else 'compra'}) expirada: {reason}")
                 self._cancel_order(o.ticket)
 
+    def _watch_pending_live(self) -> None:
+        """Igual que `_watch_pending` (tpAntes/muerto, spec-estrategia.md
+        #5.2) pero contra el TICK EN VIVO en vez de la vela cerrada, corrida
+        en CADA ciclo de `run()` (`poll_interval_s`, 10s tipico) en vez de
+        solo cuando cierra una vela nueva (hasta `bar_seconds`, 5min en el
+        perfil 5m).
+
+        Motivo (visto en cuenta demo el 2026-08-23): sin esto, el precio
+        puede tocar el TP dentro de la vela en formacion sin que la orden
+        limite se haya llenado, devolverse, y llenar esa orden de verdad en
+        el broker -- todo antes de que `_watch_pending` llegue a cancelarla
+        por "target alcanzado sin llenarse", porque esa funcion solo corre
+        al cerrar la vela. Esto reduce la ventana de exposicion de "hasta
+        bar_seconds" a "hasta poll_interval_s".
+
+        Usa `tick.bid` nada mas (no mezcla bid/ask nuevo aca: copy_rates_*
+        de MT5, que alimenta `_watch_pending`, ya es una serie de bid).
+        No evalua `caduca`/`maxBarsTrade`: eso depende de conteo de barras
+        reales (`_bars_between`), no de precio en vivo -- sigue siendo
+        exclusivo de `_watch_pending` en cada vela cerrada, que ademas queda
+        como red de seguridad redundante si un ciclo de poll se salta o
+        `symbol_info_tick` falla momentaneamente. Sin duplicacion posible:
+        en cuanto una orden se cancela, `orders_get()` deja de devolverla,
+        asi que el otro chequeo simplemente no la vuelve a encontrar."""
+        orders = self.my_orders()
+        if not orders:
+            return
+        tick = mt5.symbol_info_tick(self.symbol)
+        if tick is None:
+            self._log(f"AVISO: no se pudo leer symbol_info_tick({self.symbol}) para vigilancia en vivo: {mt5.last_error()}")
+            return
+        for o in orders:
+            d = -1 if o.type == mt5.ORDER_TYPE_SELL_LIMIT else 1
+            stop, target = o.sl, o.tp
+            tp_antes = tick.bid <= target if d < 0 else tick.bid >= target
+            expired, reason = False, ""
+            if tp_antes:
+                expired, reason = True, "target alcanzado sin llenarse"
+            elif self.params.orden_viva:
+                muerto = tick.bid >= stop if d < 0 else tick.bid <= stop
+                if muerto:
+                    expired, reason = True, "precio alcanzo el stop sin llenarse (invalidada)"
+
+            if expired:
+                self._log(f"Pendiente #{o.ticket} ({'venta' if d < 0 else 'compra'}) expirada: {reason}")
+                self._cancel_order(o.ticket)
+
     def _watch_open(self, raw_bar_time: int) -> None:
         for p in self.my_positions():
             bars_since_open = self._bars_between(int(p.time), raw_bar_time)
@@ -309,6 +367,7 @@ class LiveExecutionBot:
             try:
                 with mt5_lock:  # serializa contra la API (Fase 5), mismo proceso
                     n = self.poll_once()
+                    self._watch_pending_live()  # tick en vivo, cada ciclo -- ver docstring
                 if n:
                     self._log(f"Procesadas {n} vela(s) nueva(s).")
                 bi = 0
