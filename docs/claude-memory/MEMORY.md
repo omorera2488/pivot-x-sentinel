@@ -1,0 +1,4 @@
+- [Proyecto pivot-x-sentinel: roadmap y regla de trabajo](pivot-x-sentinel-roadmap.md) — estado del bot de Oro/MT5, dónde vive el roadmap, qué specs ya existen
+- [Técnica de offset horario de bróker MT5](mt5-broker-offset-technique.md) — medir zona horaria del servidor en vivo con symbol_info_tick, sin hardcodear el bróker
+- [El bot ahora replica exactamente el indicador de TradingView (usarCausal=true)](pivot-x-sentinel-tv-reference-mismatch.md) — cambio del 2026-08-19 a pedido del usuario; deja desactualizado el backtest de Fase 3
+- [No mencionar el backtest al hablar de resultados](pivot-x-sentinel-no-backtest-talk.md) — el usuario solo quiere resultados en vivo, lo pidió repetidas veces
