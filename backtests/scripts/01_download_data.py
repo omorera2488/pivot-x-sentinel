@@ -1,9 +1,10 @@
-"""Descarga el historial de XAUUSDm M5 desde la terminal MT5 conectada.
+"""Descarga el historial de XAUUSD/BTCUSD M5 desde la terminal MT5 conectada.
 Ver docs/spec-backtest.md #2.
 
 Uso:
     python scripts/01_download_data.py [SIMBOLO] [TIMEFRAME]
-Default: XAUUSDm M5
+Default: XAUUSD M5 -- SIMBOLO acepta la base generica ('XAUUSD', 'BTCUSD') o
+el nombre exacto del broker ('XAUUSDm', 'BTCUSDc', ...), se resuelve solo.
 """
 import sys
 from pathlib import Path
@@ -14,13 +15,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))       # backtests/,
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))       # repo root, para "import execution"
 
 from src.download import download_history, save_history
-from execution.src.mt5_utils import find_gold_symbols, measure_broker_offset_seconds
+from execution.src.mt5_utils import find_gold_symbols, measure_broker_offset_seconds, resolve_symbol
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 
 def main():
-    symbol = sys.argv[1] if len(sys.argv) > 1 else "XAUUSDm"
+    requested = sys.argv[1] if len(sys.argv) > 1 else "XAUUSD"
     timeframe = sys.argv[2] if len(sys.argv) > 2 else "M5"
 
     ok = mt5.initialize()
@@ -31,10 +32,10 @@ def main():
     acc = mt5.account_info()
     print(f"Conectado: cuenta {acc.login} server {acc.server}")
 
-    gold = find_gold_symbols()
-    print(f"Simbolos con 'XAU' disponibles: {gold}")
-    if symbol not in gold:
-        print(f"AVISO: {symbol!r} no aparece entre los simbolos disponibles; se intenta igual.")
+    print(f"Simbolos con 'XAU' disponibles: {find_gold_symbols()}")
+    symbol = resolve_symbol(requested)
+    if symbol != requested:
+        print(f"{requested!r} resuelto a {symbol!r} en este broker")
 
     offset_s = measure_broker_offset_seconds(symbol)
     print(f"Offset del servidor vs UTC: {offset_s:+.2f} s")

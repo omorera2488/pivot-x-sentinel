@@ -31,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from execution.src.bot import LiveExecutionBot
-from execution.src.mt5_utils import mt5_lock
+from execution.src.mt5_utils import mt5_lock, resolve_symbol
 from strategy.profiles import PROFILES
 
 app = FastAPI(title="pivot-x-sentinel API", version="0.1.0")
@@ -40,7 +40,7 @@ app.add_middleware(
 )  # el panel (Fase 6) puede correr en otro puerto/origen en dev; la API igual
    # solo escucha en localhost por default (ver nota del modulo)
 
-DEFAULT_SYMBOL = "XAUUSDm"
+DEFAULT_SYMBOL = "XAUUSD"  # generico -- resolve_symbol() lo mapea al nombre real del broker conectado
 DEFAULT_MAGIC = 900001
 
 _bot: LiveExecutionBot | None = None
@@ -81,6 +81,19 @@ class StartRequest(BaseModel):
 
 def _bot_running() -> bool:
     return _thread is not None and _thread.is_alive()
+
+
+def _resolve_query_symbol(symbol: str) -> str:
+    """Para /positions, /orders, /history: el panel puede seguir mandando un
+    nombre generico ('XAUUSD') aunque el bot ya resolvio el real del broker
+    ('XAUUSDc') al conectar -- sin esto, el filtro exacto de MT5 no matchea
+    nada y el panel muestra listas vacias. Si no se puede resolver (por
+    ejemplo MT5 desconectado), se usa el string tal cual para no romper la
+    consulta con un 500 en cada refresco del panel."""
+    try:
+        return resolve_symbol(symbol)
+    except RuntimeError:
+        return symbol
 
 
 def _require_mt5():
@@ -174,7 +187,8 @@ def account():
 def positions(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC):
     _require_mt5()
     with mt5_lock:
-        rows = mt5.positions_get(symbol=symbol) or ()
+        sym = _resolve_query_symbol(symbol)
+        rows = mt5.positions_get(symbol=sym) or ()
     return [p._asdict() for p in rows if p.magic == magic]
 
 
@@ -182,7 +196,8 @@ def positions(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC):
 def orders(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC):
     _require_mt5()
     with mt5_lock:
-        rows = mt5.orders_get(symbol=symbol) or ()
+        sym = _resolve_query_symbol(symbol)
+        rows = mt5.orders_get(symbol=sym) or ()
     return [o._asdict() for o in rows if o.magic == magic]
 
 
@@ -193,10 +208,11 @@ def history(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC,
     date_to = datetime.now(timezone.utc)
     date_from = date_to - timedelta(days=days)
     with mt5_lock:
+        sym = _resolve_query_symbol(symbol)
         deals = mt5.history_deals_get(date_from, date_to)
     if deals is None:
         return []
-    return [d._asdict() for d in deals if d.magic == magic and d.symbol == symbol]
+    return [d._asdict() for d in deals if d.magic == magic and d.symbol == sym]
 
 
 # ---- panel estatico (Fase 6) -----------------------------------------------

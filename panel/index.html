@@ -221,7 +221,7 @@ async function refresh() {
 document.getElementById("btnStart").addEventListener("click", async () => {
   // ver config.html: los defaults van como base, un pending viejo sin
   // campos nuevos (ej. una_operacion_a_la_vez) no debe perderlos.
-  const defaults = { profile: "5m", symbol: "XAUUSDm", magic: 900001, poll_interval_s: 10, live: true, una_operacion_a_la_vez: true };
+  const defaults = { profile: "5m", symbol: "XAUUSD", magic: 900001, poll_interval_s: 10, live: true, una_operacion_a_la_vez: true };
   const pending = { ...defaults, ...(loadPendingConfig() || {}) };
   const msg = document.getElementById("msg");
   try {

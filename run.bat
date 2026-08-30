@@ -11,7 +11,7 @@ echo   Para parar: Ctrl+C en esta ventana.
 echo ============================================================
 echo.
 
-"C:\Users\Chicho\AppData\Local\Programs\Python\Python310\python.exe" -m uvicorn api.app:app --host 127.0.0.1 --port 8000
+".venv\Scripts\python.exe" -m uvicorn api.app:app --host 127.0.0.1 --port 8000
 
 echo.
 echo ============================================================

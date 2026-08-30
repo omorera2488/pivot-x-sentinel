@@ -7,8 +7,12 @@ ordenes -- util para validar una configuracion nueva antes de arriesgar
 capital real.
 
 Uso:
-    python scripts/run_bot.py [--profile 1m|5m] [--symbol XAUUSDm]
+    python scripts/run_bot.py [--profile 1m|5m] [--symbol XAUUSD|BTCUSD]
                                [--magic 900001] [--poll 10] [--dry-run]
+
+--symbol acepta la base generica ('XAUUSD', 'BTCUSD') o el nombre exacto de
+tu broker ('XAUUSDm', 'XAUUSDc', ...) -- se resuelve solo al conectar (ver
+execution/src/mt5_utils.py:resolve_symbol).
 """
 import argparse
 import sys
@@ -22,7 +26,7 @@ from execution.src.bot import LiveExecutionBot
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--profile", default="5m", choices=["1m", "5m", "M1", "M5"])
-    ap.add_argument("--symbol", default="XAUUSDm")
+    ap.add_argument("--symbol", default="XAUUSD")
     ap.add_argument("--magic", type=int, default=900001)
     ap.add_argument("--poll", type=int, default=10, help="segundos entre sondeos")
     ap.add_argument("--lookback-buckets", type=int, default=3)

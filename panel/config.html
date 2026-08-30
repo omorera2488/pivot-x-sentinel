@@ -32,8 +32,8 @@
     </label>
     <label class="setting">
       <b>Instrumento</b>
-      <small>Símbolo tal como lo nombra tu bróker (varía: XAUUSD, XAUUSDm, XAUUSD.a…).</small>
-      <input type="text" id="symbol" value="XAUUSDm">
+      <small>Base del instrumento (XAUUSD, BTCUSD…) — el bot resuelve solo el nombre exacto de tu bróker (XAUUSDm, XAUUSDc, XAUUSD.a…), no hace falta saberlo. Si tu bróker lista más de un símbolo que matchee, poné el nombre exacto acá.</small>
+      <input type="text" id="symbol" value="XAUUSD">
     </label>
 
     <label class="setting">
@@ -175,7 +175,7 @@ async function init() {
   // campo faltante tiene que caer en su default (true), no quedar "sin
   // marcar" porque el checkbox del HTML arranca asi -- eso guardaria false
   // de verdad si el usuario aprieta Guardar sin darse cuenta.
-  const defaults = { profile: "5m", symbol: "XAUUSDm", magic: 900001, poll_interval_s: 10,
+  const defaults = { profile: "5m", symbol: "XAUUSD", magic: 900001, poll_interval_s: 10,
                       live: true, una_operacion_a_la_vez: true, ...profileDefaults["5m"] };
   const pending = loadPendingConfig();
   fillForm(pending ? { ...defaults, ...pending } : defaults);

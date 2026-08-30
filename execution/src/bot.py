@@ -52,7 +52,7 @@ from strategy.engine import StrategyParams
 from strategy.live_signal import LiveSignalEngine
 from strategy.profiles import get_profile, normalize_profile_name
 
-from .mt5_utils import connect, select_symbol, measure_broker_offset_seconds, resolve_filling_mode, mt5_lock
+from .mt5_utils import connect, select_symbol, resolve_symbol, measure_broker_offset_seconds, resolve_filling_mode, mt5_lock
 
 TIMEFRAME_BY_PROFILE = {"1m": mt5.TIMEFRAME_M1, "5m": mt5.TIMEFRAME_M5}
 SECONDS_BY_PROFILE = {"1m": 60, "5m": 300}
@@ -98,6 +98,10 @@ class LiveExecutionBot:
 
     def connect(self) -> None:
         connect()
+        requested = self.symbol
+        self.symbol = resolve_symbol(self.symbol)  # 'XAUUSD'/'BTCUSD' -> nombre real del broker
+        if self.symbol != requested:
+            self._log(f"Simbolo {requested!r} resuelto a {self.symbol!r} en este broker")
         info = select_symbol(self.symbol)
         self._filling_mode = resolve_filling_mode(self.symbol)
         self._offset_seconds = measure_broker_offset_seconds(self.symbol)

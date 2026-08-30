@@ -28,13 +28,66 @@ def connect() -> None:
         raise RuntimeError(f"No se pudo conectar a MT5: {mt5.last_error()}")
 
 
-def find_gold_symbols() -> list[str]:
-    """Busca simbolos que contengan 'XAU' en el broker conectado — nunca se
-    hardcodea un nombre de simbolo, cada broker lo nombra distinto."""
+def find_symbols(base: str) -> list[str]:
+    """Busca simbolos que contengan `base` (ej. 'XAUUSD', 'BTCUSD') en el
+    broker conectado — nunca se hardcodea un nombre de simbolo completo, cada
+    broker le agrega su propio prefijo/sufijo ('XAUUSDm', 'BTCUSDc', ...)."""
     symbols = mt5.symbols_get()
     if symbols is None:
         return []
-    return sorted(s.name for s in symbols if "XAU" in s.name.upper())
+    base_up = base.upper()
+    return sorted(s.name for s in symbols if base_up in s.name.upper())
+
+
+def find_gold_symbols() -> list[str]:
+    """Alias historico de find_symbols('XAU') — lo siguen usando los scripts
+    de /backtests."""
+    return find_symbols("XAU")
+
+
+# Bases de instrumento conocidas por el bot, para poder pasar "XAUUSD" o
+# "BTCUSD" sin saber de antemano como los nombra el broker conectado. Agregar
+# aca cualquier instrumento nuevo que el bot deba soportar.
+KNOWN_BASES = ("XAUUSD", "BTCUSD")
+
+
+def resolve_symbol(requested: str) -> str:
+    """Devuelve el nombre de simbolo REAL del broker conectado a partir de lo
+    que pidio el usuario ('XAUUSD', 'XAUUSDm', 'BTCUSD', ...) — agnostico de
+    broker y de si la cuenta es demo o real (eso solo cambia como se llama el
+    simbolo, no la logica de la estrategia, ver strategy/costs.py).
+
+    1. Si `requested` ya es un nombre exacto que el broker reconoce, se usa
+       tal cual (permite seguir pasando el nombre completo si se prefiere).
+    2. Si no, se extrae la base conocida (KNOWN_BASES) contenida en
+       `requested` y se buscan simbolos del broker que la contengan.
+       - Exactamente un candidato -> se usa ese.
+       - Cero o mas de uno -> error explicito con la lista de candidatos,
+         para no operar el instrumento equivocado con plata real.
+    """
+    if mt5.symbol_select(requested, True):
+        return requested
+
+    req_up = requested.upper()
+    base = next((b for b in KNOWN_BASES if b in req_up), req_up)
+    candidates = find_symbols(base)
+
+    if len(candidates) == 1:
+        chosen = candidates[0]
+        if not mt5.symbol_select(chosen, True):
+            raise RuntimeError(f"No se pudo seleccionar el simbolo resuelto {chosen!r}: {mt5.last_error()}")
+        return chosen
+
+    if not candidates:
+        raise RuntimeError(
+            f"No se pudo seleccionar {requested!r} y no hay ningun simbolo con {base!r} "
+            f"en el broker conectado: {mt5.last_error()}"
+        )
+
+    raise RuntimeError(
+        f"{requested!r} es ambiguo en este broker -- candidatos encontrados: {candidates}. "
+        "Especifica el nombre exacto en la config (symbol) para no operar el instrumento equivocado."
+    )
 
 
 def select_symbol(symbol: str):
