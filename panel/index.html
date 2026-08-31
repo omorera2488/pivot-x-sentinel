@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>pivot-x-sentinel</title>
-<link rel="stylesheet" href="style.css?v=2">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 <main>
@@ -77,15 +77,15 @@
     <div class="label">Últimas 20 operaciones</div>
     <table>
       <thead>
-        <tr><th>Hora local</th><th>Posición</th><th>Tipo</th><th>Volumen</th><th>Precio</th><th>Resultado neto</th></tr>
+        <tr><th>Hora local</th><th>Posición</th><th>Tipo</th><th>Volumen</th><th>Precio</th><th>Resultado neto</th><th>Calificación</th></tr>
       </thead>
-      <tbody id="tradesBody"><tr><td colspan="6" class="loading">Cargando…</td></tr></tbody>
+      <tbody id="tradesBody"><tr><td colspan="7" class="loading">Cargando…</td></tr></tbody>
     </table>
   </div>
 </section>
 
 </main>
-<script src="app.js?v=2"></script>
+<script src="app.js?v=3"></script>
 <script>
 function renderStatus(s) {
   const running = s.running;
@@ -160,11 +160,11 @@ function renderTradeStats(trades) {
   document.getElementById("winRate").textContent = winRate === null ? "--" : fmtPct(winRate);
 }
 
-function renderTradesTable(trades) {
+function renderTradesTable(trades, scores) {
   const rows = trades.slice(-20).reverse();
   const tbody = document.getElementById("tradesBody");
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="muted">Sin operaciones cerradas todavía.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="muted">Sin operaciones cerradas todavía.</td></tr>`;
     return;
   }
   tbody.innerHTML = rows.map((t) => `
@@ -175,6 +175,7 @@ function renderTradesTable(trades) {
       <td>${t.volume}</td>
       <td>${t.price}</td>
       <td class="${t.net > 0 ? "ok" : t.net < 0 ? "bad" : ""}">${fmtUSD(t.net)}</td>
+      <td>${scoreBadge(scores, t.position_id)}</td>
     </tr>`).join("");
 }
 
@@ -206,11 +207,15 @@ async function refresh() {
     renderEvents(events);
 
     const historyQS = s.symbol ? `?symbol=${s.symbol}&magic=${s.magic}&days=365` : "?days=365";
-    const history = await apiGet("/history" + historyQS);
+    const scoresQS = s.symbol ? `?symbol=${s.symbol}&magic=${s.magic}` : "";
+    const [history, scores] = await Promise.all([
+      apiGet("/history" + historyQS),
+      apiGet("/scores" + scoresQS),
+    ]);
     const trades = closedTrades(history);
     renderTradeStats(trades);
     renderEquityCurve(trades);
-    renderTradesTable(trades);
+    renderTradesTable(trades, scores);
   } catch (err) {
     showError("err", err);
     document.getElementById("mt5State").textContent = "CONEXIÓN NO DISPONIBLE";

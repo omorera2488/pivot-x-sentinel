@@ -162,6 +162,52 @@ summary { cursor: pointer; color: var(--muted); }
 
 .loading { color: var(--muted); font-size: 13px; padding: 20px 0; }
 
+/* Calificación de entrada (Divergencia/Tendencia/CVP, ver strategy/scoring.py):
+   ícono + popover CSS puro, sin librerías -- panel/app.js arma el contenido
+   (scoreBadge()), acá solo el look. */
+.score-badge { position: relative; display: inline-block; }
+.score-icon {
+  cursor: default;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #0d1727;
+  border: 1px solid var(--card-border);
+  white-space: nowrap;
+}
+.score-icon.ok { border-color: var(--green); }
+.score-icon.bad { border-color: var(--red); }
+.score-pop {
+  display: none;
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  margin-bottom: 8px;
+  width: 260px;
+  max-width: 80vw;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 11px;
+  padding: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  z-index: 20;
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.score-badge:hover .score-pop,
+.score-badge:focus-within .score-pop { display: block; }
+.score-row { margin-bottom: 8px; }
+.score-row:last-of-type { margin-bottom: 0; }
+.score-row b { font-size: 12px; }
+.score-total {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--card-border);
+  color: var(--muted);
+}
+
 @media (max-width: 850px) {
   .grid, .config-grid, .totals { grid-template-columns: 1fr 1fr; }
   .toolbar { flex-wrap: wrap; }

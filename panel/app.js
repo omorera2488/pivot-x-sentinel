@@ -108,3 +108,41 @@ function tradeStats(trades) {
   const winRate = wins + losses > 0 ? (wins / (wins + losses)) * 100 : null;
   return { n, wins, losses, total, winRate };
 }
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+function fmtSigned(n) {
+  if (n === null || n === undefined || Number.isNaN(n)) return "--";
+  return n > 0 ? `+${n}` : `${n}`;
+}
+
+// Calificación de entrada (Divergencia/Tendencia/CVP -- ver strategy/scoring.py):
+// un ícono con un popover CSS que arma el desglose y el motivo de cada factor.
+// scoresMap viene de GET /scores ({ticket: score}); el ticket con el que el
+// bot coloca la orden es el mismo position_id que trae cada deal de /history
+// (ver execution/src/score_store.py) -- sin dato para esa fila, no muestra nada
+// (operaciones previas a esta función, o que el bot nunca llegó a calificar).
+function scoreBadge(scoresMap, positionId) {
+  const s = scoresMap && scoresMap[positionId];
+  if (!s) return "";
+  const cls = (v) => (v > 0 ? "ok" : v < 0 ? "bad" : "muted");
+  const row = (label, score, reason) => `
+    <div class="score-row">
+      <b>${label}</b> <span class="${cls(score)}">${fmtSigned(score)}</span>
+      <div class="muted">${escapeHtml(reason)}</div>
+    </div>`;
+  return `
+    <span class="score-badge">
+      <span class="score-icon ${cls(s.total)}" tabindex="0">ⓘ ${fmtSigned(s.total)}</span>
+      <div class="score-pop">
+        ${row("Divergencia", s.divergencia_score, s.divergencia_reason)}
+        ${row("Tendencia", s.tendencia_score, s.tendencia_reason)}
+        ${row("CVP", s.cvp_score, s.cvp_reason)}
+        <div class="score-total">Total <b class="${cls(s.total)}">${fmtSigned(s.total)}</b> · el volumen no cambia (fixed_lot)</div>
+      </div>
+    </span>`;
+}

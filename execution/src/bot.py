@@ -51,12 +51,45 @@ import MetaTrader5 as mt5
 from strategy.engine import StrategyParams
 from strategy.live_signal import LiveSignalEngine
 from strategy.profiles import get_profile, normalize_profile_name
+from strategy import scoring
 
 from .mt5_utils import connect, select_symbol, resolve_symbol, measure_broker_offset_seconds, resolve_filling_mode, mt5_lock
+from . import score_store
 
 TIMEFRAME_BY_PROFILE = {"1m": mt5.TIMEFRAME_M1, "5m": mt5.TIMEFRAME_M5}
 SECONDS_BY_PROFILE = {"1m": 60, "5m": 300}
 MAX_EVENTS = 1000  # tope del log en memoria -- ver Fase 5 (api/app.py lee esto)
+
+# Cuantas velas base (bar_seconds) se piden hacia atras para calificar cada
+# entrada (strategy.scoring) -- suficiente para la ventana de tendencia mas
+# larga (240min/4h del perfil 5m, ~3 bloques cerrados) y para el rango de
+# divergencia RSI (hasta 60 velas) con margen de sobra.
+SCORE_LOOKBACK_BARS = 500
+
+# Operaciones cerradas minimas de ESTE bot (symbol+magic) antes de confiar en
+# un aciertos% real para el CVP -- ver strategy.scoring.cvp_score.
+AGE_LOOKBACK_DAYS_FOR_ACIERTOS = 365
+
+# Etiquetas legibles para el motivo real que MT5 guarda en su propio historial
+# -- se usan en la auditoria de _reconcile() (agregada 2026-08-31: una orden/
+# posicion propia del bot -- mismo magic -- se audita pase lo que pase, la haya
+# cancelado/cerrado este proceso, el broker (SL/TP/stop-out) u otra persona a
+# mano en el terminal).
+_REASON_LABEL = {
+    mt5.ORDER_REASON_CLIENT: "manual (terminal)",
+    mt5.ORDER_REASON_MOBILE: "manual (app movil)",
+    mt5.ORDER_REASON_WEB: "manual (web)",
+    mt5.ORDER_REASON_EXPERT: "programa/API",
+    mt5.ORDER_REASON_SL: "stop loss",
+    mt5.ORDER_REASON_TP: "take profit",
+    mt5.ORDER_REASON_SO: "stop out (margen)",
+}
+_ORDER_STATE_LABEL = {
+    mt5.ORDER_STATE_CANCELED: "cancelada",
+    mt5.ORDER_STATE_EXPIRED: "expirada",
+    mt5.ORDER_STATE_REJECTED: "rechazada",
+    mt5.ORDER_STATE_FILLED: "llenada",
+}
 
 
 class LiveExecutionBot:
@@ -78,7 +111,17 @@ class LiveExecutionBot:
         self._last_processed_time: int | None = None
         self._filling_mode: int | None = None
         self._offset_seconds: float = 0.0
+        self._contract_size: float | None = None
         self._running = False
+
+        # auditoria de ordenes/posiciones propias (ver _reconcile) -- ticket ->
+        # "venta"/"compra", tal como estaban al final del ciclo anterior.
+        self._known_orders: dict[int, str] = {}
+        self._known_positions: dict[int, str] = {}
+        # tickets que un watcher (_watch_pending/_watch_pending_live/_watch_open)
+        # ya reporto en ESTE ciclo -- _reconcile no los vuelve a loguear, solo
+        # actualiza su snapshot. Se limpia al principio de cada vuelta de run().
+        self._reported_this_cycle: set[int] = set()
         # usado en vez de time.sleep() dentro de run() -- permite que stop()
         # despierte el loop al instante, incluso si esta en medio de un
         # backoff de error de hasta 300s (ver docstring de run()).
@@ -105,11 +148,26 @@ class LiveExecutionBot:
         info = select_symbol(self.symbol)
         self._filling_mode = resolve_filling_mode(self.symbol)
         self._offset_seconds = measure_broker_offset_seconds(self.symbol)
+        self._contract_size = info.trade_contract_size
         acc = mt5.account_info()
         self._log(f"Conectado: cuenta {acc.login} server {acc.server} simbolo {self.symbol} "
                   f"perfil {self.profile_name} magic {self.magic} dry_run={self.dry_run}")
         self._log(f"Offset servidor vs UTC: {self._offset_seconds:+.2f}s | "
                   f"digits={info.digits} point={info.point} filling_mode={self._filling_mode}")
+        self._seed_known_state()
+
+    def _order_label(self, o) -> str:
+        return "venta" if o.type == mt5.ORDER_TYPE_SELL_LIMIT else "compra"
+
+    def _position_label(self, p) -> str:
+        return "venta" if p.type == mt5.POSITION_TYPE_SELL else "compra"
+
+    def _seed_known_state(self) -> None:
+        """Snapshot inicial al conectar -- lo que YA exista en la cuenta (de
+        una sesion anterior del bot) no debe reportarse como recien
+        desaparecido en el primer ciclo de _reconcile()."""
+        self._known_orders = {o.ticket: self._order_label(o) for o in self.my_orders()}
+        self._known_positions = {p.ticket: self._position_label(p) for p in self.my_positions()}
 
     def replay_startup(self) -> None:
         """Reconstruye armado/bloque HTF sobre historial reciente, SIN
@@ -209,6 +267,7 @@ class LiveExecutionBot:
             if expired:
                 self._log(f"Pendiente #{o.ticket} ({'venta' if d < 0 else 'compra'}) expirada: {reason}")
                 self._cancel_order(o.ticket)
+                self._reported_this_cycle.add(o.ticket)
 
     def _watch_pending_live(self) -> None:
         """Igual que `_watch_pending` (tpAntes/muerto, spec-estrategia.md
@@ -256,6 +315,7 @@ class LiveExecutionBot:
             if expired:
                 self._log(f"Pendiente #{o.ticket} ({'venta' if d < 0 else 'compra'}) expirada: {reason}")
                 self._cancel_order(o.ticket)
+                self._reported_this_cycle.add(o.ticket)
 
     def _watch_open(self, raw_bar_time: int) -> None:
         for p in self.my_positions():
@@ -263,6 +323,62 @@ class LiveExecutionBot:
             if bars_since_open >= self.params.max_bars_trade:
                 self._log(f"Posicion #{p.ticket} cerrada por tiempo maximo ({bars_since_open} barras reales)")
                 self._close_position(p)
+                self._reported_this_cycle.add(p.ticket)
+
+    def _reconcile(self) -> None:
+        """Auditoria: compara lo que el bot sabia que tenia (fin del ciclo
+        anterior) contra lo que MT5 tiene AHORA. Toda orden/posicion propia
+        (mismo magic) que desapareció se loguea, leyendo el motivo REAL del
+        historial de MT5 -- sin importar si la cerro/cancelo este mismo
+        proceso, el broker (SL/TP/stop-out), u otra persona a mano en el
+        terminal. Fue abierta por el bot: se audita pase lo que pase (a
+        pedido del usuario, 2026-08-31 -- antes una posicion cerrada a mano
+        no dejaba ningun rastro en el log).
+
+        Los watchers (_watch_pending/_watch_pending_live/_watch_open) ya
+        loguean con mas detalle las cancelaciones/cierres que ELLOS mismos
+        deciden en este mismo ciclo -- esos tickets quedan en
+        _reported_this_cycle y aca no se repiten, solo se actualiza el
+        snapshot."""
+        positions_now = self.my_positions()
+        cur_orders = {o.ticket: self._order_label(o) for o in self.my_orders()}
+        cur_positions = {p.ticket: self._position_label(p) for p in positions_now}
+
+        for ticket, tipo in self._known_orders.items():
+            if ticket in cur_orders or ticket in self._reported_this_cycle:
+                continue
+            pos = next((p for p in positions_now if p.ticket == ticket), None)
+            if pos is not None:
+                self._log(f"Orden #{ticket} ({tipo}) llenada -- ahora posicion abierta @ {pos.price_open:.3f}")
+            else:
+                self._log_order_vanished(ticket, tipo)
+
+        for ticket, tipo in self._known_positions.items():
+            if ticket in cur_positions or ticket in self._reported_this_cycle:
+                continue
+            self._log_position_vanished(ticket, tipo)
+
+        self._known_orders = cur_orders
+        self._known_positions = cur_positions
+
+    def _log_order_vanished(self, ticket: int, tipo: str) -> None:
+        rows = mt5.history_orders_get(ticket=ticket) or ()
+        o = rows[0] if rows else None
+        if o is None:
+            self._log(f"AVISO: orden #{ticket} ({tipo}) desaparecio de MT5 sin rastro en el historial")
+            return
+        estado = _ORDER_STATE_LABEL.get(o.state, f"estado {o.state}")
+        motivo = _REASON_LABEL.get(o.reason, f"motivo {o.reason}")
+        self._log(f"Orden #{ticket} ({tipo}) {estado} -- {motivo}")
+
+    def _log_position_vanished(self, ticket: int, tipo: str) -> None:
+        deals = mt5.history_deals_get(position=ticket) or ()
+        salida = next((d for d in deals if d.entry == mt5.DEAL_ENTRY_OUT), None)
+        if salida is None:
+            self._log(f"AVISO: posicion #{ticket} ({tipo}) desaparecio de MT5 sin rastro en el historial")
+            return
+        motivo = _REASON_LABEL.get(salida.reason, f"motivo {salida.reason}")
+        self._log(f"Posicion #{ticket} ({tipo}) cerrada -- {motivo} @ {salida.price:.3f} P&L={salida.profit:+.2f}")
 
     # ---- envio de ordenes reales (o simuladas si dry_run) ---------------
 
@@ -289,11 +405,76 @@ class LiveExecutionBot:
         if res is None or res.retcode != mt5.TRADE_RETCODE_DONE:
             self._log(f"AVISO: no se pudo cerrar #{p.ticket}: {res}")
 
-    def _place_order(self, direction: int, entry: float, stop: float, target: float) -> None:
+    def _aciertos_pct(self) -> float | None:
+        """Aciertos% REAL, medido de las operaciones ya cerradas por ESTE bot
+        (mismo symbol+magic) en los ultimos AGE_LOOKBACK_DAYS_FOR_ACIERTOS
+        dias -- nunca de un backtest (ver strategy.scoring, docstring del
+        modulo). Mismo filtro/formula que closedTrades()/tradeStats() en
+        panel/app.js: deal de salida (DEAL_ENTRY_OUT), neto = profit+swap+
+        comision+fee. None si no hay MT5, o si hay menos de
+        scoring.CVP_MIN_SAMPLE operaciones cerradas -- no tiene sentido
+        confiar en un aciertos% medido sobre una muestra chica."""
+        date_to = datetime.now(timezone.utc)
+        date_from = date_to - timedelta(days=AGE_LOOKBACK_DAYS_FOR_ACIERTOS)
+        deals = mt5.history_deals_get(date_from, date_to)
+        if deals is None:
+            return None
+        closed = [d for d in deals
+                  if d.magic == self.magic and d.symbol == self.symbol and d.entry == mt5.DEAL_ENTRY_OUT]
+        if len(closed) < scoring.CVP_MIN_SAMPLE:
+            return None
+        nets = [(d.profit or 0.0) + (d.swap or 0.0) + (d.commission or 0.0) + getattr(d, "fee", 0.0)
+                for d in closed]
+        wins = sum(1 for n in nets if n > 0)
+        losses = sum(1 for n in nets if n < 0)
+        if wins + losses == 0:
+            return None
+        return wins / (wins + losses) * 100.0
+
+    def _score_entry(self, direction: int, entry: float, stop: float, target: float,
+                      raw_bar_time: int) -> scoring.EntryScore | None:
+        """Califica la entrada (Divergencia + Tendencia + CVP, ver
+        strategy/scoring.py) SOLO para registrarla -- no decide si se opera
+        ni cambia el volumen (self.params.fixed_lot no se toca). Cualquier
+        falla aca (MT5, historial insuficiente) se loguea y se devuelve
+        None -- la orden se coloca igual, sin calificacion, nunca al reves."""
+        try:
+            dt_to = datetime.fromtimestamp(raw_bar_time, tz=timezone.utc)
+            dt_from = dt_to - timedelta(seconds=self.bar_seconds * SCORE_LOOKBACK_BARS)
+            rates = mt5.copy_rates_range(self.symbol, self.timeframe, dt_from, dt_to)
+            if rates is None or len(rates) < 20:
+                self._log("AVISO: historial insuficiente para calificar la entrada -- se coloca sin calificacion.")
+                return None
+
+            time_utc = rates["time"].astype("int64") - round(self._offset_seconds)
+            high = rates["high"].astype(float)
+            low = rates["low"].astype(float)
+            close = rates["close"].astype(float)
+
+            tick = mt5.symbol_info_tick(self.symbol)
+            spread_price = (tick.ask - tick.bid) if tick is not None else 0.0
+
+            return scoring.score_entry(
+                direction=direction, profile_name=self.profile_name,
+                entry=entry, stop=stop, target=target,
+                time_utc=time_utc, high=high, low=low, close=close,
+                spread_price=spread_price,
+                commission_usd=0.0,  # no hay commission_per_lot configurado en el bot en vivo todavia
+                fixed_lot=self.params.fixed_lot, contract_size=self._contract_size or 1.0,
+                aciertos_pct=self._aciertos_pct(),
+            )
+        except Exception as e:
+            self._log(f"AVISO: no se pudo calificar la entrada ({e!r}) -- se coloca sin calificacion.")
+            return None
+
+    def _place_order(self, direction: int, entry: float, stop: float, target: float) -> int | None:
+        """Devuelve el ticket de la orden colocada (None si fue dry_run o si
+        el broker la rechazo) -- lo usa process_closed_bar() para asociarle
+        la calificacion de entrada (score_store), si hubo una."""
         tipo = "venta" if direction < 0 else "compra"
         if self.dry_run:
             self._log(f"[dry_run] colocaria {tipo} limite: entry={entry:.3f} sl={stop:.3f} tp={target:.3f}")
-            return
+            return None
         req = {
             "action": mt5.TRADE_ACTION_PENDING,
             "symbol": self.symbol,
@@ -310,8 +491,9 @@ class LiveExecutionBot:
         res = mt5.order_send(req)
         if res is None or res.retcode != mt5.TRADE_RETCODE_DONE:
             self._log(f"AVISO: orden {tipo} rechazada: {res}")
-        else:
-            self._log(f"Orden {tipo} colocada: #{res.order} entry={entry:.3f} sl={stop:.3f} tp={target:.3f}")
+            return None
+        self._log(f"Orden {tipo} colocada: #{res.order} entry={entry:.3f} sl={stop:.3f} tp={target:.3f}")
+        return res.order
 
     # ---- deteccion de vela cerrada + procesamiento por barra ------------
 
@@ -345,7 +527,18 @@ class LiveExecutionBot:
                 if activos >= limite:
                     self._log(f"Señal descartada: limite de concurrencia ({activos}/{limite})")
                 else:
-                    self._place_order(signal.dir, signal.entry, signal.stop, signal.target)
+                    entry_score = self._score_entry(signal.dir, signal.entry, signal.stop, signal.target, raw_time)
+                    if entry_score is not None:
+                        self._log(
+                            f"Calificacion de la entrada: total={entry_score.total:+d} "
+                            f"(divergencia={entry_score.divergencia_score:+d} '{entry_score.divergencia_reason}', "
+                            f"tendencia={entry_score.tendencia_score:+d} '{entry_score.tendencia_reason}', "
+                            f"cvp={entry_score.cvp_score:+d} '{entry_score.cvp_reason}') -- "
+                            f"solo se registra, el volumen sigue en fixed_lot."
+                        )
+                    ticket = self._place_order(signal.dir, signal.entry, signal.stop, signal.target)
+                    if ticket is not None and entry_score is not None:
+                        score_store.record(self.symbol, self.magic, ticket, entry_score.to_dict())
 
         self._last_processed_time = int(r["time"])
 
@@ -369,9 +562,12 @@ class LiveExecutionBot:
         bi = 0
         while self._running:
             try:
+                self._reported_this_cycle = set()
                 with mt5_lock:  # serializa contra la API (Fase 5), mismo proceso
                     n = self.poll_once()
                     self._watch_pending_live()  # tick en vivo, cada ciclo -- ver docstring
+                    self._reconcile()  # auditoria: cualquier orden/posicion propia que
+                                        # desaparecio sin que un watcher de arriba la reportara
                 if n:
                     self._log(f"Procesadas {n} vela(s) nueva(s).")
                 bi = 0

@@ -32,6 +32,7 @@ from pydantic import BaseModel
 
 from execution.src.bot import LiveExecutionBot
 from execution.src.mt5_utils import mt5_lock, resolve_symbol
+from execution.src import score_store
 from strategy.profiles import PROFILES
 
 app = FastAPI(title="pivot-x-sentinel API", version="0.1.0")
@@ -201,6 +202,19 @@ def orders(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC):
     return [o._asdict() for o in rows if o.magic == magic]
 
 
+@app.get("/scores")
+def scores(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC):
+    """Calificacion (Divergencia/Tendencia/CVP, ver strategy/scoring.py) de
+    cada orden colocada por el bot, leida del registro local (ver
+    execution/src/score_store.py) -- {ticket: score}. El panel la cruza con
+    /history por position_id (mismo valor que el ticket con el que se
+    colocó la orden -- ver docstring de score_store). Separado de /history
+    (que refleja 1:1 lo que MT5 devuelve) igual que /events ya esta
+    separado, en vez de mezclarlo ahi."""
+    sym = _resolve_query_symbol(symbol)
+    return score_store.load_all(sym, magic)
+
+
 @app.get("/history")
 def history(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC,
             days: int = Query(30, ge=1, le=3650)):
@@ -212,7 +226,17 @@ def history(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC,
         deals = mt5.history_deals_get(date_from, date_to)
     if deals is None:
         return []
-    return [d._asdict() for d in deals if d.magic == magic and d.symbol == sym]
+    # No se filtra cada deal individualmente por magic: el deal de CIERRE de
+    # una posicion cerrada a mano desde el terminal MT5 no hereda el magic de
+    # la posicion (viene con magic=0, no es un cierre "Expert") -- filtrar
+    # deal por deal descartaba esa mitad del par y la operacion desaparecia
+    # de /history aunque la apertura sí tuviera nuestro magic (visto en vivo
+    # 2026-08-31). En cambio: primero se identifican las POSICIONES nuestras
+    # (la apertura -- entry=0 -- con nuestro magic+simbolo), y se devuelven
+    # TODOS los deals de esas posiciones, sea cual sea el magic de cada leg.
+    mis_posiciones = {d.position_id for d in deals
+                       if d.entry == mt5.DEAL_ENTRY_IN and d.magic == magic and d.symbol == sym}
+    return [d._asdict() for d in deals if d.position_id in mis_posiciones]
 
 
 # ---- panel estatico (Fase 6) -----------------------------------------------
