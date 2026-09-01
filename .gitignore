@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# pivot-x-sentinel: registro local de score_store (execution/src/score_store.py)
+# -- estado en vivo de la cuenta/maquina que corre el bot (tickets reales,
+# timestamps), no codigo fuente. No se versiona, igual que /events (en
+# memoria, nunca escrito a disco).
+execution/data/

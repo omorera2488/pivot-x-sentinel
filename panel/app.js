@@ -130,11 +130,17 @@ function scoreBadge(scoresMap, positionId) {
   const s = scoresMap && scoresMap[positionId];
   if (!s) return "";
   const cls = (v) => (v > 0 ? "ok" : v < 0 ? "bad" : "muted");
-  const row = (label, score, reason) => `
+  // score/reason pueden faltar en registros de antes de agregar un factor
+  // nuevo (ej. "Nodo" no existía en las primeras entradas calificadas) --
+  // se omite la fila en vez de mostrar "undefined".
+  const row = (label, score, reason) => {
+    if (score === undefined || reason === undefined) return "";
+    return `
     <div class="score-row">
       <b>${label}</b> <span class="${cls(score)}">${fmtSigned(score)}</span>
       <div class="muted">${escapeHtml(reason)}</div>
     </div>`;
+  };
   return `
     <span class="score-badge">
       <span class="score-icon ${cls(s.total)}" tabindex="0">ⓘ ${fmtSigned(s.total)}</span>
@@ -142,6 +148,7 @@ function scoreBadge(scoresMap, positionId) {
         ${row("Divergencia", s.divergencia_score, s.divergencia_reason)}
         ${row("Tendencia", s.tendencia_score, s.tendencia_reason)}
         ${row("CVP", s.cvp_score, s.cvp_reason)}
+        ${row("Nodo", s.nodo_score, s.nodo_reason)}
         <div class="score-total">Total <b class="${cls(s.total)}">${fmtSigned(s.total)}</b> · el volumen no cambia (fixed_lot)</div>
       </div>
     </span>`;

@@ -16,7 +16,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, para "import strategy"
 
 from strategy.scoring import (
-    cvp_score, divergence_score, find_confirmed_pivots, rsi, trend_score,
+    cvp_score, divergence_score, find_confirmed_pivots, node_score, rsi, trend_score,
 )
 
 
@@ -141,6 +141,36 @@ def test_g_cvp_margin():
     print("  G) CVP: margen holgado (+1), margen negativo sin bloquear (0), datos insuficientes (0): OK")
 
 
+def test_h_node_score():
+    # 10 barras de 1 minuto, periodos_htf_min=100 -> las 10 caen en el MISMO
+    # bloque (bucket de 6000s). Casi todo el rango es [100,101] excepto la
+    # barra 5, que sube a [104,105] con un volumen 100x mayor al resto --
+    # el perfil de volumen deberia concentrar el POC/value area ahi.
+    n = 10
+    time_utc = (np.arange(n) * 60).astype("int64")
+    high = np.full(n, 101.0)
+    low = np.full(n, 100.0)
+    high[5], low[5] = 105.0, 104.0
+    volume = np.full(n, 1.0)
+    volume[5] = 100.0
+
+    # camino 100->110 pasa por la zona ~104-105 -> freno, -1
+    score_overlap, reason_overlap = node_score(100.0, 110.0, time_utc, high, low, volume, periodos_htf_min=100)
+    assert score_overlap == -1, f"camino que pasa por el nodo deberia dar -1, dio {score_overlap} ({reason_overlap})"
+    assert "104" in reason_overlap or "105" in reason_overlap, f"el motivo deberia mencionar la zona del nodo: {reason_overlap}"
+
+    # camino 200->210 no pasa cerca del nodo -> 0, nunca suma por ausencia
+    score_clear, reason_clear = node_score(200.0, 210.0, time_utc, high, low, volume, periodos_htf_min=100)
+    assert score_clear == 0, f"camino lejos del nodo deberia dar 0, dio {score_clear} ({reason_clear})"
+
+    # periodos_htf_min=1 -> bucket de 60s == espaciado de las barras -> el
+    # bloque "actual" es UNA sola barra (la ultima), menos que NODE_MIN_BARS
+    score_insuf, reason_insuf = node_score(100.0, 110.0, time_utc, high, low, volume, periodos_htf_min=1)
+    assert score_insuf == 0 and "insuficiente" in reason_insuf, f"se esperaba 0/insuficiente, dio {score_insuf}/{reason_insuf}"
+
+    print("  H) Nodo (perfil de volumen de rango fijo): freno si el camino cruza el nodo (-1), 0 si no, 0 sin historial: OK")
+
+
 if __name__ == "__main__":
     print("Checksum mecanico del scoring (Divergencia + Tendencia + CVP)\n")
     test_a_rsi_wilder()
@@ -150,4 +180,5 @@ if __name__ == "__main__":
     test_e_trend_agreement()
     test_f_trend_insufficient_history()
     test_g_cvp_margin()
+    test_h_node_score()
     print("\nTODO OK — scoring de entradas validado.")

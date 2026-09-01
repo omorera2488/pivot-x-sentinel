@@ -1,6 +1,7 @@
 """Calificacion de cada entrada -- Divergencia (RSI 14 close) + Tendencia
-(multi-timeframe via bucket_levels) + CVP (breakeven neto vs aciertos% real).
-Diseno cerrado con el usuario el 2026-08-31 (chat del panel), 3 factores:
+(multi-timeframe via bucket_levels) + CVP (breakeven neto vs aciertos% real)
++ Nodo (perfil de volumen de rango fijo). Diseno cerrado con el usuario el
+2026-08-31 (chat del panel), 4 factores:
 
   1. Divergencia: RSI(14, close), pivotes tipo ta.pivothigh/pivotlow de
      TradingView. +1 si la divergencia vigente apoya el sentido de la
@@ -15,6 +16,11 @@ Diseno cerrado con el usuario el 2026-08-31 (chat del panel), 3 factores:
      breakeven neto de ESTA entrada (SL/TP con spread+comision reales
      sumados). +1 si el margen es holgado, 0 si es marginal o si falta
      historial, nunca bloquea la entrada.
+  4. Nodo (perfil de volumen de rango fijo, agregado 2026-08-31): el "rango
+     fijo" es el mismo bloque HTF que arma la señal (periodos_htf_min). Si
+     el camino entre la entrada y el TP se superpone con la zona de mayor
+     volumen de ese bloque (POC + value area) -- probable rechazo -- resta
+     -1. Como con el resto, la ausencia de nodo no es un merito: nunca suma.
 
 IMPORTANTE: este modulo solo CALIFICA una entrada que engine.py/
 live_signal.py ya decidio -- no cambia si se opera ni el volumen. El "gate"
@@ -51,6 +57,10 @@ TREND_LOOKBACK_BLOCKS = 3  # cuantos bloques CERRADOS mira para la secuencia HH/
 
 CVP_MIN_SAMPLE = 10        # operaciones cerradas minimas para confiar en aciertos_pct
 CVP_MARGIN_HOLGADO = 10.0  # puntos porcentuales de margen para considerarse "holgado"
+
+NODE_BINS = 24              # niveles de precio del histograma del perfil de volumen
+NODE_VALUE_AREA_PCT = 0.70  # convencion estandar: zona que acumula el 70% del volumen alrededor del POC
+NODE_MIN_BARS = 3           # barras minimas en el bloque actual para confiar en el perfil
 
 
 # ---- Divergencia -----------------------------------------------------------
@@ -252,6 +262,102 @@ def cvp_score(direction: int, entry: float, stop: float, target: float, spread_p
     return 0, f"no cubre costos -- {detalle} (gate desactivado en esta fase, se registra igual)", margen
 
 
+# ---- Nodo (perfil de volumen de rango fijo) ----------------------------------
+
+def _current_block_bars(time_utc: np.ndarray, periodos_htf_min: int) -> np.ndarray:
+    """Indices de las barras del bloque HTF EN FORMACION (mismo bucket que la
+    ULTIMA barra) -- el "rango fijo" del perfil de volumen. Mismo criterio de
+    bucket que _closed_blocks()/engine.bucket_levels(), pero al reves: aca es
+    justo el bloque que SI nos interesa, no el que se excluye."""
+    bucket_len_s = periodos_htf_min * 60
+    bucket_id = time_utc // bucket_len_s
+    return np.where(bucket_id == bucket_id[-1])[0]
+
+
+def _volume_profile(high: np.ndarray, low: np.ndarray, volume: np.ndarray,
+                     idx: np.ndarray, bins: int):
+    """Histograma de volumen por nivel de precio dentro de las barras `idx`:
+    reparte el volumen de cada barra PROPORCIONALMENTE entre los bins que su
+    rango [low, high] abarca (no todo al bin del close -- una vela con rango
+    amplio reparte su volumen en varios niveles, mas fiel a un perfil real).
+    Devuelve (edges, vol) o None si no hay rango de precio valido."""
+    if len(idx) == 0:
+        return None
+    lo, hi = low[idx].min(), high[idx].max()
+    if not (hi > lo):
+        return None
+    edges = np.linspace(lo, hi, bins + 1)
+    vol = np.zeros(bins)
+    for i in idx:
+        bar_lo, bar_hi, v = low[i], high[i], volume[i]
+        if v <= 0:
+            continue
+        if bar_hi <= bar_lo:
+            b = min(int(np.searchsorted(edges, bar_lo, side="right") - 1), bins - 1)
+            vol[max(b, 0)] += v
+            continue
+        lo_bin = min(max(int(np.searchsorted(edges, bar_lo, side="right") - 1), 0), bins - 1)
+        hi_bin = min(max(int(np.searchsorted(edges, bar_hi, side="left") - 1), 0), bins - 1)
+        span = hi_bin - lo_bin + 1
+        vol[lo_bin:hi_bin + 1] += v / span
+    return edges, vol
+
+
+def _value_area(edges: np.ndarray, vol: np.ndarray, value_area_pct: float):
+    """POC = bin de mayor volumen; expande al vecino (izquierda o derecha,
+    el que tenga mas volumen) hasta acumular `value_area_pct` del total --
+    mismo algoritmo que cualquier indicador de volume profile. Devuelve
+    (poc_price, va_low, va_high) o None si no hay volumen."""
+    total = vol.sum()
+    if total <= 0:
+        return None
+    poc_bin = int(np.argmax(vol))
+    lo_bin = hi_bin = poc_bin
+    acc = vol[poc_bin]
+    n = len(vol)
+    while acc / total < value_area_pct and (lo_bin > 0 or hi_bin < n - 1):
+        left = vol[lo_bin - 1] if lo_bin > 0 else -1.0
+        right = vol[hi_bin + 1] if hi_bin < n - 1 else -1.0
+        if right >= left:
+            hi_bin += 1
+            acc += vol[hi_bin]
+        else:
+            lo_bin -= 1
+            acc += vol[lo_bin]
+    poc_price = (edges[poc_bin] + edges[poc_bin + 1]) / 2.0
+    return poc_price, edges[lo_bin], edges[hi_bin + 1]
+
+
+def node_score(entry: float, target: float, time_utc: np.ndarray, high: np.ndarray,
+               low: np.ndarray, volume: np.ndarray, periodos_htf_min: int,
+               bins: int = NODE_BINS, value_area_pct: float = NODE_VALUE_AREA_PCT,
+               min_bars: int = NODE_MIN_BARS) -> tuple[int, str]:
+    """Si el camino [min(entry,target), max(entry,target)] se superpone con
+    la zona de valor (POC + value area) del bloque HTF EN FORMACION -> freno,
+    -1 (nunca suma -- la ausencia de nodo no es un merito). 0 si no hay
+    superposicion, o si falta historial/volumen para confiar en el perfil."""
+    idx = _current_block_bars(time_utc, periodos_htf_min)
+    if len(idx) < min_bars:
+        return 0, f"historial insuficiente para el perfil de volumen del bloque actual ({len(idx)} velas)"
+
+    profile = _volume_profile(high, low, volume, idx, bins)
+    if profile is None:
+        return 0, "sin rango de precio valido para el perfil de volumen"
+    edges, vol = profile
+
+    value_area = _value_area(edges, vol, value_area_pct)
+    if value_area is None:
+        return 0, "sin volumen en el bloque actual"
+    poc_price, va_low, va_high = value_area
+
+    path_lo, path_hi = min(entry, target), max(entry, target)
+    overlap = not (va_high < path_lo or va_low > path_hi)
+    detalle = f"POC~{poc_price:.3f}, zona {va_low:.3f}-{va_high:.3f}"
+    if overlap:
+        return -1, f"nodo de volumen en el camino a la salida ({detalle}) -- probable rechazo"
+    return 0, f"sin nodo relevante en el camino ({detalle})"
+
+
 # ---- Score total --------------------------------------------------------------
 
 @dataclass(frozen=True)
@@ -264,6 +370,8 @@ class EntryScore:
     cvp_score: int
     cvp_reason: str
     cvp_margin: float | None
+    nodo_score: int
+    nodo_reason: str
     total: int
 
     def to_dict(self) -> dict:
@@ -272,11 +380,13 @@ class EntryScore:
 
 def score_entry(direction: int, profile_name: str, entry: float, stop: float, target: float,
                  time_utc: np.ndarray, high: np.ndarray, low: np.ndarray, close: np.ndarray,
+                 volume: np.ndarray, periodos_htf_min: int,
                  spread_price: float, commission_usd: float, fixed_lot: float, contract_size: float,
                  aciertos_pct: float | None) -> EntryScore:
-    """Punto de entrada unico: corre los 3 factores sobre la MISMA ventana de
-    barras ya cerradas (time_utc/high/low/close, terminando en la barra de
-    la señal) y arma el score total. No decide nada -- solo califica."""
+    """Punto de entrada unico: corre los 4 factores sobre la MISMA ventana de
+    barras ya cerradas (time_utc/high/low/close/volume, terminando en la
+    barra de la señal) y arma el score total. No decide nada -- solo
+    califica."""
     rsi_values = rsi(close)
     current_bar = len(close) - 1
 
@@ -291,10 +401,13 @@ def score_entry(direction: int, profile_name: str, entry: float, stop: float, ta
     c_score, c_reason, c_margin = cvp_score(direction, entry, stop, target, spread_price,
                                              commission_usd, fixed_lot, contract_size, aciertos_pct)
 
+    n_score, n_reason = node_score(entry, target, time_utc, high, low, volume, periodos_htf_min)
+
     return EntryScore(
         direction=direction,
         divergencia_score=d_score, divergencia_reason=d_reason,
         tendencia_score=t_score, tendencia_reason=t_reason,
         cvp_score=c_score, cvp_reason=c_reason, cvp_margin=c_margin,
-        total=d_score + t_score + c_score,
+        nodo_score=n_score, nodo_reason=n_reason,
+        total=d_score + t_score + c_score + n_score,
     )

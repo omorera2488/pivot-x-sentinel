@@ -450,6 +450,10 @@ class LiveExecutionBot:
             high = rates["high"].astype(float)
             low = rates["low"].astype(float)
             close = rates["close"].astype(float)
+            # tick_volume: proxy de volumen que ya trae copy_rates_range (CFD/OTC,
+            # sin real_volume de bolsa -- mismo criterio que usa TradingView en
+            # este simbolo). Alimenta el perfil de volumen del score de "Nodo".
+            volume = rates["tick_volume"].astype(float)
 
             tick = mt5.symbol_info_tick(self.symbol)
             spread_price = (tick.ask - tick.bid) if tick is not None else 0.0
@@ -458,6 +462,7 @@ class LiveExecutionBot:
                 direction=direction, profile_name=self.profile_name,
                 entry=entry, stop=stop, target=target,
                 time_utc=time_utc, high=high, low=low, close=close,
+                volume=volume, periodos_htf_min=self.params.periodos_htf_min,
                 spread_price=spread_price,
                 commission_usd=0.0,  # no hay commission_per_lot configurado en el bot en vivo todavia
                 fixed_lot=self.params.fixed_lot, contract_size=self._contract_size or 1.0,
@@ -533,7 +538,8 @@ class LiveExecutionBot:
                             f"Calificacion de la entrada: total={entry_score.total:+d} "
                             f"(divergencia={entry_score.divergencia_score:+d} '{entry_score.divergencia_reason}', "
                             f"tendencia={entry_score.tendencia_score:+d} '{entry_score.tendencia_reason}', "
-                            f"cvp={entry_score.cvp_score:+d} '{entry_score.cvp_reason}') -- "
+                            f"cvp={entry_score.cvp_score:+d} '{entry_score.cvp_reason}', "
+                            f"nodo={entry_score.nodo_score:+d} '{entry_score.nodo_reason}') -- "
                             f"solo se registra, el volumen sigue en fixed_lot."
                         )
                     ticket = self._place_order(signal.dir, signal.entry, signal.stop, signal.target)
