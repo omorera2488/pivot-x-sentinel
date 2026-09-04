@@ -21,9 +21,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .paths import app_root
+from .paths import user_data_root
 
-DATA_DIR = app_root() / "execution" / "data" / "scores"
+# user_data_root(), NO app_root(): esto tiene que sobrevivir un upgrade del
+# instalador (ver execution/src/paths.py -- app_root() apunta a la carpeta
+# _internal que un upgrade borra y reconstruye entera).
+DATA_DIR = user_data_root() / "execution" / "data" / "scores"
 
 
 def _store_path(symbol: str, magic: int) -> Path:

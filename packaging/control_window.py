@@ -49,6 +49,9 @@ from tkinter import messagebox
 from urllib.request import urlopen, Request
 from urllib.error import URLError
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root -- no-op cuando esto corre empaquetado
+from execution.src.version import get_version  # noqa: E402
+
 HOST = "127.0.0.1"
 PORT = 8000
 PANEL_URL = f"http://{HOST}:{PORT}/panel/"
@@ -169,7 +172,7 @@ class ControlWindow:
         self.server = server
         self._closing = False
 
-        root.title("pivot-x-sentinel -- control")
+        root.title(f"pivot-x-sentinel v{get_version()} -- control")
         root.geometry("560x360")
         root.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -286,6 +289,7 @@ class ControlWindow:
 
 def main():
     _install_log_redirection()
+    print(f"pivot-x-sentinel version: {get_version()}")  # primera linea util para diagnostico si alguien manda un log
     print("[control] arrancando servidor...")
 
     server = ServerThread()

@@ -38,6 +38,12 @@ MANIFEST
 # Inno Setup -- instalador final generado por packaging/build.ps1, no se versiona
 packaging/dist_installer/
 
+# Artefactos de release (instaladores .exe, ~19MB c/u) -- se generan con
+# scripts/build_release.py, viven solo en disco local (ver releases/README.md).
+# El historial de versiones ya queda trazado en CHANGELOG.md + tags de git.
+releases/*
+!releases/README.md
+
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt

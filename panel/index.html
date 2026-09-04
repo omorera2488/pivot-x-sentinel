@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>pivot-x-sentinel</title>
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 <main>
 
-<h1>pivot-x-sentinel</h1>
+<h1>pivot-x-sentinel <span class="version-tag" id="versionTag"></span></h1>
 <div class="sub" id="subtitle">Control local · cargando…</div>
 
 <div class="toolbar">
@@ -254,6 +254,11 @@ document.getElementById("btnStop").addEventListener("click", async () => {
     showError("err", err);
   }
 });
+
+// La version no cambia en runtime -- se pide una sola vez, no en cada refresh().
+apiGet("/version").then((v) => {
+  document.getElementById("versionTag").textContent = `v${v.version}`;
+}).catch(() => {});
 
 refresh();
 setInterval(refresh, 10000);

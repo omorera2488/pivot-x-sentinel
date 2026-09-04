@@ -45,7 +45,9 @@ lo resuelve solo al conectar.
 ------------------------------------------------------------
 3) COMO ABRIRLO
 ------------------------------------------------------------
-Menu Inicio -> "pivot-x-sentinel". Se abre una ventanita de control con:
+Menu Inicio -> "pivot-x-sentinel". El titulo de la ventana muestra la version
+instalada (ej. "pivot-x-sentinel v1.0.0 -- control") -- utilo si reportas un
+problema, para saber que version estabas corriendo. Se abre con:
 
   - Abrir panel   -> abre el dashboard en tu navegador
                      (http://127.0.0.1:8000/panel/). Desde ahi se arranca,
@@ -141,17 +143,32 @@ expongas a internet (port forwarding, tunel, etc.) tal cual esta.
 ------------------------------------------------------------
 7) ACTUALIZAR A UNA VERSION NUEVA
 ------------------------------------------------------------
-Corre el instalador nuevo apuntando a la misma carpeta (el instalador lo
-propone solo) -- reemplaza los archivos del programa y conserva lo que haya
-en execution\data\scores\ y en los logs.
+Corre el instalador nuevo -- detecta la instalacion existente sola (no hace
+falta desinstalar antes) y actualiza en el mismo lugar. Reemplaza los
+archivos del programa y CONSERVA lo que haya en execution\data\scores\ y en
+los logs.
+
+Si el instalador que corriste es una version ANTERIOR a la que ya tenes
+instalada, te avisa antes de continuar (para no downgradear por error). Si
+es la MISMA version, te avisa que ya esta instalada y reinstala/repara sobre
+esa misma version.
 
 
 ------------------------------------------------------------
 8) PROBLEMAS COMUNES
 ------------------------------------------------------------
-"No se pudo conectar a MT5" en el panel
-  -> El terminal MT5 no esta abierto, o no tiene una cuenta logueada, o
-     "trading algoritmico" esta desactivado (ver seccion 2).
+El panel o la ventana de control muestran un mensaje sobre MT5 al arrancar
+el bot (en vez de arrancar directo)
+  -> El bot valida MT5 ANTES de operar y no arranca si algo no esta en
+     orden -- el mensaje te dice exactamente que falta, por ejemplo:
+       "No se pudo conectar con MetaTrader 5..." -> el terminal no esta
+         abierto o no esta disponible en esta PC.
+       "...no tiene una cuenta activa..." -> abri MT5 e inicia sesion.
+       "...trading algoritmico esta desactivado..." -> activa el boton
+         "Algo Trading"/"Trading automatico" en la barra de MT5.
+       "...no tiene permiso para operar..." / "...Expert Advisors..." ->
+         revisa con tu broker los permisos de esa cuenta.
+     Ver tambien la seccion 2 de este documento.
 
 La ventana de control dice "Servidor arrancando o no responde todavia..."
   y se queda asi

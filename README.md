@@ -19,7 +19,13 @@ El desarrollo avanza por fases, definidas y con criterios de aceptación explíc
 /execution     → bridge con MetaTrader5 (conexión, envío/gestión de órdenes)
 /api           → servidor local que expone estado del bot al panel
 /panel         → frontend del dashboard
-/packaging     → script de empaquetado del .exe y ventana de control
+/packaging     → empaquetado del .exe (PyInstaller + Inno Setup) y ventana de control
+/scripts       → herramientas de desarrollo y el proceso de release (build_release.py)
 /backtests     → motor y resultados de backtesting específico de Oro
 /docs          → specs, decisiones, roadmap
+/releases      → artefactos de cada release (solo en disco local, no versionado en git)
 ```
+
+## Versión y releases
+
+La versión instalada es la única fuente de verdad en **[VERSION](VERSION)** (SemVer `MAJOR.MINOR.PATCH`, ver [execution/src/version.py](execution/src/version.py)) — expuesta por `GET /version`, en el panel, en el título de la ventana de control, y en los logs. El historial de cambios está en **[CHANGELOG.md](CHANGELOG.md)**; cada release trae su propio `RELEASE_NOTES.md` dentro de `releases/vX.Y.Z/` (generado por `python scripts/build_release.py`, ver [packaging/README.md](packaging/README.md)).

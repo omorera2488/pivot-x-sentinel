@@ -53,7 +53,8 @@ from strategy.live_signal import LiveSignalEngine
 from strategy.profiles import get_profile, normalize_profile_name
 from strategy import scoring
 
-from .mt5_utils import connect, select_symbol, resolve_symbol, measure_broker_offset_seconds, resolve_filling_mode, mt5_lock
+from .mt5_utils import select_symbol, resolve_symbol, measure_broker_offset_seconds, resolve_filling_mode, mt5_lock
+from .mt5_validation import check_mt5_readiness, MT5NotReadyError
 from . import score_store
 
 TIMEFRAME_BY_PROFILE = {"1m": mt5.TIMEFRAME_M1, "5m": mt5.TIMEFRAME_M5}
@@ -156,7 +157,18 @@ class LiveExecutionBot:
     # ---- arranque -----------------------------------------------------
 
     def connect(self) -> None:
-        connect()
+        # Precondicion de arranque (y de cada reconexion del loop, ver
+        # run()): MT5 tiene que estar REALMENTE listo para operar antes de
+        # seguir -- no alcanza con que initialize() no explote (ver
+        # execution/src/mt5_validation.py). Sin esto, un account_info()
+        # devolviendo None (terminal abierta sin cuenta logueada) tumbaba
+        # esto mas abajo con un AttributeError crudo en vez de un mensaje
+        # claro.
+        readiness = check_mt5_readiness()
+        if not readiness.ok:
+            self._log(f"MT5 no esta listo para operar -- {readiness.user_message}")
+            raise MT5NotReadyError(readiness)
+
         requested = self.symbol
         self.symbol = resolve_symbol(self.symbol)  # 'XAUUSD'/'BTCUSD' -> nombre real del broker
         if self.symbol != requested:

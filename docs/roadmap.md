@@ -134,7 +134,22 @@ Especificación: [docs/spec-panel.md](spec-panel.md). Implementado en [/panel](.
 
 **Debe incluir:** script de arranque, empaquetado (ej. PyInstaller), ventana de control con opciones de abrir panel / ver logs / cerrar todo de forma segura.
 
-**Criterio de aceptación:** doble clic en el ejecutable deja todo corriendo y el panel accesible, sin pasos manuales adicionales.
+**Criterio de aceptación:** doble clic en el ejecutable deja todo corriendo y el panel accesible, sin pasos manuales adicionales. ✅ Probado de punta a punta en esta máquina: instalación limpia, arranque, panel, "Cerrar todo" con shutdown limpio, y desinstalación.
+
+---
+
+## Fase 7.1 — Versionado, releases reproducibles, y validación real de MT5
+
+**Objetivo:** poder distribuir versiones nuevas del `.exe` sin perder la instalación existente (upgrade in-place, no reinstalación manual), con trazabilidad completa versión → commit → tag → artefacto, y sin que el bot intente operar si MT5 no está realmente listo (terminal disponible + cuenta logueada + permisos de trading).
+
+**Debe incluir:**
+- SemVer con fuente única de verdad (`/VERSION`), sin duplicar el número en varios archivos.
+- `CHANGELOG.md` (historial acumulado) + `RELEASE_NOTES.md` por release (qué trae ESE artefacto).
+- Proceso de release reproducible (`scripts/build_release.py`) que valida SemVer, corre los tests, construye, y genera `releases/vX.Y.Z/` con instalador + notas + checksum SHA256, sin sobrescribir un release ya publicado.
+- Upgrade in-place en el instalador (Inno Setup, mismo `AppId`/carpeta), preservando datos del usuario (scores, logs) y bloqueando downgrades accidentales.
+- Validación real de MT5 (`terminal_info()`/`account_info()`, no un `try/except` genérico) como precondición de arranque del motor de trading — ver `execution/src/mt5_validation.py`.
+
+**Criterio de aceptación:** `python scripts/build_release.py` genera un release completo sin pasos manuales salvo escribir el CHANGELOG; un `.exe` de una versión nueva instalado sobre una anterior preserva los datos y actualiza sin duplicar; el bot rechaza arrancar (con un mensaje claro, no un traceback) si MT5 no tiene una cuenta activa. ✅ Probado de punta a punta en esta máquina (instalación → upgrade con datos de prueba → desinstalación, y los 8 scripts de test del repo, incluidos los 3 nuevos) — pendiente únicamente un smoke test manual con una terminal MT5 real distinta de la que ya opera en esta máquina (ver `packaging/README.md`).
 
 ---
 
@@ -162,5 +177,6 @@ Especificación: [docs/spec-panel.md](spec-panel.md). Implementado en [/panel](.
 | 4 — Ejecución en vivo | ✅ Implementada, opera en vivo por defecto (sin parámetros validados de Fase 3) |
 | 5 — API local | ✅ Completada |
 | 6 — Panel web | ✅ Completada |
-| 7 — Ejecutable Windows | 🔶 En progreso — build de PyInstaller (onedir) + ventana de control + instalador de Inno Setup ya escritos, ver [packaging/README.md](../packaging/README.md); falta correr el paso de Inno Setup end-to-end y probar el instalador ya generado en una PC limpia con MT5 real |
+| 7 — Ejecutable Windows | ✅ Completada — instalador de Inno Setup + PyInstaller probado de punta a punta (instalar/arrancar/cerrar/desinstalar), ver [packaging/README.md](../packaging/README.md) |
+| 7.1 — Versionado, releases, validación MT5 | ✅ Completada — ver [CHANGELOG.md](../CHANGELOG.md); pendiente smoke test manual con una terminal MT5 real distinta de la que ya opera en esta máquina |
 | 8 — Validación y checklist a real | ⏳ Pendiente |

@@ -35,11 +35,13 @@ from pydantic import BaseModel
 
 from execution.src.bot import LiveExecutionBot
 from execution.src.mt5_utils import mt5_lock, resolve_symbol
+from execution.src.mt5_validation import MT5NotReadyError
 from execution.src.paths import app_root
+from execution.src.version import get_version
 from execution.src import score_store
 from strategy.profiles import PROFILES
 
-app = FastAPI(title="pivot-x-sentinel API", version="0.1.0")
+app = FastAPI(title="pivot-x-sentinel API", version=get_version())
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )  # el panel (Fase 6) puede correr en otro puerto/origen en dev; la API igual
@@ -109,6 +111,15 @@ def _require_mt5():
 
 # ---- control del bot ------------------------------------------------------
 
+@app.get("/version")
+def version():
+    """Version instalada -- fuente unica /VERSION (execution/src/version.py).
+    Usado por el panel (etiqueta junto al titulo) y por quien reporte un
+    problema, para saber que build estaba corriendo (ver tambien el log de
+    arranque de packaging/control_window.py)."""
+    return {"version": get_version()}
+
+
 @app.get("/status")
 def status():
     return {
@@ -134,9 +145,17 @@ def start(req: StartRequest):
             poll_interval_s=req.poll_interval_s, dry_run=not req.live,
             **req.overrides(),
         )
-        with mt5_lock:
-            bot.connect()
-            bot.replay_startup()
+        try:
+            with mt5_lock:
+                bot.connect()
+                bot.replay_startup()
+        except MT5NotReadyError as e:
+            # bot.connect() ya valido MT5 (execution/src/mt5_validation.py)
+            # ANTES de tocar nada de la estrategia -- si esto se levanta, el
+            # motor de trading nunca llego a arrancar (no hay thread creado
+            # todavia mas abajo). 503 (Service Unavailable) + el mensaje ya
+            # pensado para el usuario, no un 500 generico con traceback.
+            raise HTTPException(503, detail=e.readiness.user_message) from e
 
         thread = threading.Thread(target=bot.run, daemon=True, name="pxs-bot")
         thread.start()

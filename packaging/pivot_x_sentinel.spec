@@ -48,6 +48,10 @@ a = Analysis(
         # _panel_dir): NO son .py, PyInstaller no los sigue solo por import
         # analysis, hay que copiarlos a mano.
         (str(REPO_ROOT / "panel"), "panel"),
+        # Fuente unica de la version (execution/src/version.py:get_version())
+        # -- mismo motivo, un archivo de texto plano no lo trae el analisis
+        # de imports.
+        (str(REPO_ROOT / "VERSION"), "."),
     ],
     hiddenimports=HIDDEN_IMPORTS,
     hookspath=[],
