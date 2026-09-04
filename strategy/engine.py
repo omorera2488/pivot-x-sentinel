@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 import numpy as np
 
 from .costs import BrokerCosts
+from .htf_session import bucket_start_utc_seconds
 
 
 @dataclass(frozen=True)
@@ -142,23 +143,29 @@ def bucket_levels(time_utc: np.ndarray, high: np.ndarray, low: np.ndarray, perio
     dentro del mismo bloque, cada nuevo maximo/minimo local vuelve a cumplir
     high[i] >= resistencia[i] (o low[i] <= soporte[i]) porque resistencia[i]
     se acaba de actualizar con ese mismo high[i]. No es un bug de esta
-    funcion, es el comportamiento que se decidio replicar."""
+    funcion, es el comportamiento que se decidio replicar.
+
+    La alineacion del bloque (cuando arranca uno nuevo) vive en
+    htf_session.bucket_start_utc_seconds() -- ver ese modulo para la
+    evidencia de por que NO es un modulo fijo sobre epoca Unix (enmienda
+    2026-09-04, spec-estrategia.md #3.1). Comparte la misma funcion que
+    strategy/live_signal.py: es lo que garantiza que este motor batch y el
+    motor incremental en vivo produzcan exactamente los mismos bloques."""
     n = len(time_utc)
-    bucket_len_s = periodos_min * 60
-    bucket_id = time_utc // bucket_len_s
 
     run_high = np.empty(n)
     run_low = np.empty(n)
 
-    cur_bucket = bucket_id[0]
+    cur_bucket_start = bucket_start_utc_seconds(int(time_utc[0]), periodos_min)
     cur_high = high[0]
     cur_low = low[0]
     run_high[0] = cur_high
     run_low[0] = cur_low
 
     for i in range(1, n):
-        if bucket_id[i] != cur_bucket:
-            cur_bucket = bucket_id[i]
+        bucket_start = bucket_start_utc_seconds(int(time_utc[i]), periodos_min)
+        if bucket_start != cur_bucket_start:
+            cur_bucket_start = bucket_start
             cur_high = high[i]
             cur_low = low[i]
         else:

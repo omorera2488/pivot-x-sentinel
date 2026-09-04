@@ -70,6 +70,22 @@ SCORE_LOOKBACK_BARS = 500
 # un aciertos% real para el CVP -- ver strategy.scoring.cvp_score.
 AGE_LOOKBACK_DAYS_FOR_ACIERTOS = 365
 
+
+def _corrected_utc_seconds(raw_time_s: int, offset_seconds: float) -> int:
+    """Corrige `raw_time_s` (timestamp de vela, tal cual lo entrega MT5) por
+    el offset de reloj del SERVIDOR del broker medido en vivo (ver
+    measure_broker_offset_seconds(), mt5_utils.py) -- no una suposicion de
+    "zona horaria del bróker" fija: se mide contra el reloj UTC real en cada
+    conexion (spec-estrategia.md #3.1) y puede dar ~0 si el servidor ya
+    corre en UTC (caso medido para la cuenta actual: -1.86s, ruido de red,
+    no una zona horaria completa) o varias horas si no. Con offset_seconds=0
+    esta funcion es la identidad -- no desplaza nada que ya venga en UTC.
+    Usado para alinear el bloque HTF (LiveSignalEngine); NO para el conteo
+    de rollovers de swap ni para el scoring de entradas, que usan el
+    timestamp crudo del servidor a proposito (ver comentarios en las
+    llamadas)."""
+    return raw_time_s - round(offset_seconds)
+
 # Etiquetas legibles para el motivo real que MT5 guarda en su propio historial
 # -- se usan en la auditoria de _reconcile() (agregada 2026-08-31: una orden/
 # posicion propia del bot -- mismo magic -- se audita pase lo que pase, la haya
@@ -184,7 +200,7 @@ class LiveExecutionBot:
         closed = rates[:-1]  # la ultima posicion es la vela en formacion -- nunca se usa
         self.signal_engine = LiveSignalEngine(self.params)
         for r in closed:
-            self.signal_engine.process_bar(int(r["time"]) - round(self._offset_seconds),
+            self.signal_engine.process_bar(_corrected_utc_seconds(int(r["time"]), self._offset_seconds),
                                             float(r["high"]), float(r["low"]), float(r["close"]))
         self._last_processed_time = int(closed[-1]["time"])
         self._log(f"Replay: {len(closed)} velas cerradas procesadas ({lookback_min}min de lookback). "
@@ -513,7 +529,7 @@ class LiveExecutionBot:
 
     def process_closed_bar(self, r) -> None:
         raw_time = int(r["time"])                          # hora de SERVIDOR sin corregir
-        t = raw_time - round(self._offset_seconds)         # UTC corregido -- solo para el bloque HTF (motor de señal)
+        t = _corrected_utc_seconds(raw_time, self._offset_seconds)  # UTC corregido -- solo para el bloque HTF (motor de señal)
         high, low, close = float(r["high"]), float(r["low"]), float(r["close"])
 
         # _watch_open/_watch_pending cuentan barras REALES via copy_rates_range
@@ -523,7 +539,16 @@ class LiveExecutionBot:
         self._watch_open(raw_time)
         self._watch_pending(high, low, raw_time)
 
+        prev_bucket = self.signal_engine._cur_bucket
         signal = self.signal_engine.process_bar(t, high, low, close)
+        if self.signal_engine._cur_bucket != prev_bucket:
+            # _cur_bucket ya es el inicio en segundos unix UTC del bloque
+            # (htf_session.bucket_start_utc_seconds(), ver strategy/live_signal.py
+            # -- enmienda 2026-09-04, spec-estrategia.md #3.1), no un id a
+            # multiplicar por la duracion del bloque.
+            bucket_start_utc = datetime.fromtimestamp(self.signal_engine._cur_bucket, tz=timezone.utc)
+            self._log(f"Bloque HTF nuevo: arranca {bucket_start_utc:%Y-%m-%d %H:%M:%S} UTC "
+                      f"(periodos={self.params.periodos_htf_min}min)")
         if signal.dir is not None:
             if not signal.valido:
                 self._log(f"Señal descartada: stop del lado incorrecto (dir={signal.dir})")

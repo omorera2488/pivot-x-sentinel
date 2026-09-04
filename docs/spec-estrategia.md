@@ -45,13 +45,35 @@ Serie de velas OHLC del timeframe base elegido (`chartTF`), ordenadas por tiempo
 
 ### 3.1 Definición del bloque
 
-El bloque HTF es una ventana de tiempo fija de `periodos` minutos, no solapada, alineada a época Unix UTC:
+> **Enmienda (2026-09-04):** la formula original de esta sección (`bucket_id = floor(unix_minutes(t) / periodos)`, bloques continuos alineados a época Unix) quedó **descartada por prueba de paridad directa contra TradingView** — ver evidencia y regla nueva más abajo. La implementación vive en [`strategy/htf_session.py`](../strategy/htf_session.py), compartida bit a bit entre el motor batch (`engine.bucket_levels`) y el motor en vivo (`live_signal.LiveSignalEngine`) — ver [[pivot-x-sentinel-tv-reference-mismatch]] en la memoria del proyecto para el contexto de la sesión que detectó el desajuste.
+
+**Evidencia observada:** se midió directamente en TradingView, con `time(str(periodos))` (la misma expresión que usa el Pine de referencia — `basecode_tradingview/"5m EMA y Pivotes ZS...".txt` línea 76, `nuevoBucket = ta.change(time(htf)) != 0`) sobre XAUUSD/OZ (feed TVC), `periodos=800`, contra el bot corriendo en vivo (XAUUSDc, MT5, misma cuenta real) el 2-4 de septiembre de 2026:
 
 ```
-bucket_id(t) = floor(unix_minutes(t) / periodos)
+2026-09-02 22:00 UTC  -> bloque nuevo
+2026-09-03 11:20 UTC  -> bloque nuevo   (800 min después de las 22:00)
+2026-09-03 22:00 UTC  -> bloque nuevo   (640 min después de las 11:20, NO 800)
 ```
 
-Todas las barras del timeframe base cuyo `time[i]` cae en el mismo `bucket_id` pertenecen al mismo bloque. Esta es una decisión de esta especificación (el Pine original delega la alineación exacta a `time(htf)` de TradingView, ligada a la sesión del símbolo); lo que importa aquí es que backtest y vivo usen exactamente la misma regla — **si al conectar con MT5 se detecta que el servidor del bróker entrega timestamps en una zona horaria distinta a UTC, hay que normalizar a UTC antes de aplicar esta fórmula, no cambiar la fórmula.**
+La fórmula vieja predice bloques SIEMPRE de exactamente `periodos` minutos, sin importar la hora del día — no puede producir el salto de 640 minutos entre las 11:20 y las 22:00. Con esa fórmula, el bot llegó a calcular el bloque vigente ~2 horas desfasado respecto al que mostraba TradingView en el mismo instante (confirmado también agregando un log de transición de bloque al bot y comparándolo en vivo, no solo a ojo sobre capturas).
+
+**La regla nueva (bloque HTF sobre sesión, no sobre época Unix pura):** el patrón observado (800, después 640, después 800 de nuevo) es lo que produce TradingView al armar una resolución intradía "no estándar" (un número pelado de minutos, ej. `"800"`) sobre un símbolo con día de sesión de 24hs: cada DÍA de sesión (desde el inicio de sesión hasta el inicio de la sesión siguiente, 1440 minutos) se trocea en bloques de `periodos` minutos a partir del inicio de sesión, y el ÚLTIMO bloque del día se trunca en el límite de sesión siguiente en vez de completar `periodos` minutos si 1440 no es múltiplo exacto de `periodos` (800×1=800, 1440−800=640 → el bloque truncado medido).
+
+```
+anchor  = hora de inicio de sesión, en minutos desde medianoche UTC (medida: 22:00 UTC)
+dia(t)  = t - ((t - anchor) mod 1440min)          // inicio del día de sesión al que pertenece t
+delta   = (t - anchor) mod 1440min                 // minutos transcurridos desde ese inicio
+bloque  = floor(delta / periodos)
+bucket_start(t) = dia(t) + bloque * periodos       // inicio real del bloque HTF
+```
+
+Todas las barras del timeframe base cuyo `bucket_start(time[i])` coincide pertenecen al mismo bloque — comparar ese valor entre barras consecutivas alcanza para detectar un bloque nuevo. Implementación de referencia: `strategy/htf_session.bucket_start_utc_seconds()`.
+
+**Supuestos pendientes de validar (no confirmados todavía):**
+
+1. **DST.** El ancla de sesión (22:00 UTC) es un valor MEDIDO, no deducido — es la convención típica de "cierre de Nueva York" que usan muchos brokers forex/CFD, y esos brokers suelen correr esa hora con el horario de verano de EEUU. La medición se hizo en una sola ventana de 2 días (2-3 septiembre 2026) sin ningún cambio de DST de por medio — no hay evidencia todavía de que 22:00 UTC se mantenga después de un cambio de DST (EEUU 1-nov-2026, UE ya cambiado para cuando se mida de nuevo). Por eso el ancla es un parámetro explícito (`session_anchor_utc_min` en `htf_session.py`), no una constante escondida en el cálculo de señal — hay que volver a medir si se sospecha desalineación.
+2. **Símbolo/feed.** Se midió solo Oro, feed TVC de TradingView — no se confirmó el mismo ancla contra el feed nativo del bróker (XAUUSDc en MT5) de forma independiente, más allá de que el bot ahora usa esta regla contra ese feed y el log de transición de bloque permite seguir comparándolo.
+3. **Offset de reloj del bróker.** Esto es un problema DISTINTO del de arriba y sigue resuelto como antes — no se tocó: **si al conectar con MT5 se detecta que el servidor del bróker entrega timestamps en una zona horaria distinta a UTC, hay que normalizar a UTC antes de aplicar `bucket_start_utc_seconds()`, no cambiar la fórmula.** Confirmado que NO era la causa de este desajuste: `measure_broker_offset_seconds()` midió -1.86s (ruido de red) para la cuenta real usada, nada parecido a las ~2hs de diferencia que causaba la fórmula vieja.
 
 **Cómo medir el offset del bróker, sin asumir de antemano cuál es:** al conectar, pedir un tick reciente con `symbol_info_tick` (trae su propio timestamp de servidor) y compararlo contra el reloj UTC del sistema en el instante exacto de esa consulta. La diferencia es el offset horario de ESE bróker en ESE momento — funciona igual sin importar qué bróker sea, y no depende de tener hardcodeada la zona horaria de ningún servidor en particular. Este mismo mecanismo resuelve tanto la ingesta histórica (Fase 3) como el arranque del motor en vivo (Fase 4) contra una cuenta nueva sin configuración manual previa. Nota: el offset puede cambiar con el horario de verano de la zona del bróker, así que conviene re-medirlo en cada conexión, no cachearlo indefinidamente.
 
@@ -278,7 +300,7 @@ El original lleva contadores en vivo que sirven de referencia al portar la lógi
 
 ## 8. Decisiones abiertas (a confirmar antes de Fase 3)
 
-1. **Alineación del bloque HTF a época UTC** (§3.1) — asumido por esta especificación; a verificar que no choque con cómo MT5 entrega timestamps del bróker.
+1. ~~Alineación del bloque HTF a época UTC~~ (§3.1) — **descartada 2026-09-04**, reemplazada por alineación a sesión (ancla medida en TradingView, `strategy/htf_session.py`). Queda abierto el DST del ancla de sesión y si vale igual para otros símbolos/feeds — ver los 3 supuestos pendientes listados en §3.1.
 2. **Precio de cierre por `tooLong`** (§5.4) — se asume `close[j]` de la barra que dispara el límite; alternativa es cierre a mercado en vivo.
 3. **`maxConcurrentPorDireccion = 1`** (§6) como punto de partida del barrido de parámetros.
 4. **Timeframe base a usar para Oro** (M1 vs M5, o ambos) — no se fija aquí; Fase 3 lo trata como un parámetro más del barrido, junto con `emaPeriods`, `periodos` (duración del bloque HTF), `bufBp` y `rr`.

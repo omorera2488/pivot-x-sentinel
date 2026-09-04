@@ -19,6 +19,7 @@ import math
 from dataclasses import dataclass
 
 from .engine import StrategyParams
+from .htf_session import bucket_start_utc_seconds
 
 
 @dataclass
@@ -51,8 +52,11 @@ class LiveSignalEngine:
         self._ema_prev: float | None = None
         self._close_prev: float | None = None
 
-        self._bucket_len_s = params.periodos_htf_min * 60
-        self._cur_bucket = None
+        # _cur_bucket guarda el INICIO (segundos unix UTC) del bloque HTF
+        # vigente -- htf_session.bucket_start_utc_seconds(), no un id de
+        # division entera. Ver ese modulo para la alineacion (enmienda
+        # 2026-09-04, spec-estrategia.md #3.1).
+        self._cur_bucket: int | None = None
         self._cur_high = math.nan
         self._cur_low = math.nan
 
@@ -64,10 +68,13 @@ class LiveSignalEngine:
         # --- bloque HTF (engine.bucket_levels, incremental) ---
         # runHigh/runLow del bloque EN FORMACION -- ver docs/spec-estrategia.md
         # #3.3 (enmienda: replica usarCausal=true del Pine de referencia, no
-        # el bloque anterior cerrado).
-        bucket_id = time_utc // self._bucket_len_s
-        if self._cur_bucket is None or bucket_id != self._cur_bucket:
-            self._cur_bucket = bucket_id
+        # el bloque anterior cerrado). La ALINEACION del bloque (cuando
+        # arranca uno nuevo) es htf_session.bucket_start_utc_seconds() --
+        # enmienda 2026-09-04, spec-estrategia.md #3.1 -- comparte funcion
+        # con engine.bucket_levels() para garantizar paridad batch/vivo.
+        bucket_start = bucket_start_utc_seconds(time_utc, self.params.periodos_htf_min)
+        if self._cur_bucket is None or bucket_start != self._cur_bucket:
+            self._cur_bucket = bucket_start
             self._cur_high, self._cur_low = high, low
         else:
             if high > self._cur_high:
