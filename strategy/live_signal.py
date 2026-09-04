@@ -35,6 +35,18 @@ class BarSignal:
     armado_venta: bool        # estado DESPUES de procesar esta barra
     armado_compra: bool
 
+    # --- campos de diagnostico (agregados 2026-09-04, paridad barra a barra
+    # contra TradingView -- ver scripts/diagnose_signal_parity.py) ---
+    # Puramente informativos: NO participan de ningun calculo, solo exponen
+    # variables que process_bar() ya calculaba internamente. Todos con
+    # default para no romper una construccion existente que no los pase.
+    armado_venta_antes: bool = False   # armado_venta ANTES de evaluar esta barra (previo a re-armar/consumir)
+    armado_compra_antes: bool = False
+    cruce_abajo: bool = False          # crossunder de close/EMA esta barra (down)
+    cruce_arriba: bool = False         # crossover de close/EMA esta barra (up)
+    senal_venta: bool = False          # armado_venta_antes and cruce_abajo
+    senal_compra: bool = False         # armado_compra_antes and cruce_arriba
+
 
 class LiveSignalEngine:
     """Estado persistente de armado/bloque HTF/EMA, actualizado una barra
@@ -86,7 +98,13 @@ class LiveSignalEngine:
         soporte = self._cur_low
 
         # --- cruce + señal (con el armado tal como quedo de barras anteriores) ---
+        # armado_*_antes: snapshot puramente diagnostico del armado ANTES de
+        # que las lineas de abajo lo consuman/re-armen -- no cambia nada del
+        # calculo, solo lo captura para poder exponerlo (ver BarSignal).
+        armado_venta_antes = self.armado_venta
+        armado_compra_antes = self.armado_compra
         if self._close_prev is None:
+            down = up = False
             senal_venta = senal_compra = False
         else:
             down = self._close_prev >= self._ema_prev and close < ema_now
@@ -124,4 +142,7 @@ class LiveSignalEngine:
             dir=d, entry=entry, stop=stop, target=target, valido=valido,
             resistencia=resistencia, soporte=soporte, ema=ema_now,
             armado_venta=self.armado_venta, armado_compra=self.armado_compra,
+            armado_venta_antes=armado_venta_antes, armado_compra_antes=armado_compra_antes,
+            cruce_abajo=down, cruce_arriba=up,
+            senal_venta=senal_venta, senal_compra=senal_compra,
         )
