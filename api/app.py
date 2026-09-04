@@ -22,7 +22,10 @@ import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root -- no-op
+# cuando esto corre empaquetado (packaging/control_window.py ya deja todo lo
+# necesario en sys.path antes de importar este modulo); ver _panel_dir mas
+# abajo para la ruta que SI hace falta resolver distinto en ese caso.
 
 import MetaTrader5 as mt5
 from fastapi import FastAPI, HTTPException, Query
@@ -32,6 +35,7 @@ from pydantic import BaseModel
 
 from execution.src.bot import LiveExecutionBot
 from execution.src.mt5_utils import mt5_lock, resolve_symbol
+from execution.src.paths import app_root
 from execution.src import score_store
 from strategy.profiles import PROFILES
 
@@ -243,6 +247,6 @@ def history(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC,
 # Servido por el mismo proceso -- sin build step, HTML/CSS/JS planos que
 # consumen esta misma API por fetch(). Montado al final a proposito: si se
 # monta antes, StaticFiles puede interceptar rutas antes que las de la API.
-_panel_dir = Path(__file__).resolve().parents[1] / "panel"
+_panel_dir = app_root() / "panel"
 if _panel_dir.exists():
     app.mount("/panel", StaticFiles(directory=_panel_dir, html=True), name="panel")

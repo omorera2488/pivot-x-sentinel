@@ -1,0 +1,13 @@
+Antes de instalar pivot-x-sentinel, confirma que en ESTA PC ya tenes:
+
+  1) El terminal de MetaTrader 5 de tu broker instalado.
+  2) Una cuenta (demo o real) logueada ahi.
+  3) "Permitir trading algoritmico" activado en MT5
+     (Herramientas > Opciones > Expert Advisors).
+
+Este instalador NO instala ni configura MetaTrader 5 -- solo el bot, que se
+conecta a la terminal MT5 que ya tengas abierta.
+
+Este bot opera en vivo por defecto (manda ordenes reales). Al terminar la
+instalacion se abre un Leeme con el detalle completo de configuracion,
+riesgo y como usarlo -- leelo antes de arrancarlo.

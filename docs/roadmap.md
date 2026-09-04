@@ -162,5 +162,5 @@ Especificación: [docs/spec-panel.md](spec-panel.md). Implementado en [/panel](.
 | 4 — Ejecución en vivo | ✅ Implementada, opera en vivo por defecto (sin parámetros validados de Fase 3) |
 | 5 — API local | ✅ Completada |
 | 6 — Panel web | ✅ Completada |
-| 7 — Ejecutable Windows | ⏳ Pendiente |
+| 7 — Ejecutable Windows | 🔶 En progreso — build de PyInstaller (onedir) + ventana de control + instalador de Inno Setup ya escritos, ver [packaging/README.md](../packaging/README.md); falta correr el paso de Inno Setup end-to-end y probar el instalador ya generado en una PC limpia con MT5 real |
 | 8 — Validación y checklist a real | ⏳ Pendiente |

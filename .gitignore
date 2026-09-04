@@ -31,6 +31,12 @@ MANIFEST
 #   before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+# ... salvo el nuestro (packaging/pivot_x_sentinel.spec): es escrito a mano y
+# se versiona a proposito, no autogenerado -- ver packaging/README.md.
+!packaging/*.spec
+
+# Inno Setup -- instalador final generado por packaging/build.ps1, no se versiona
+packaging/dist_installer/
 
 # Installer logs
 pip-log.txt

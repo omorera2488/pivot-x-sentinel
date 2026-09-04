@@ -21,7 +21,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "execution" / "data" / "scores"
+from .paths import app_root
+
+DATA_DIR = app_root() / "execution" / "data" / "scores"
 
 
 def _store_path(symbol: str, magic: int) -> Path:
