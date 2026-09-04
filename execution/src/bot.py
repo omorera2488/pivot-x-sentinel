@@ -72,18 +72,18 @@ AGE_LOOKBACK_DAYS_FOR_ACIERTOS = 365
 
 
 def _corrected_utc_seconds(raw_time_s: int, offset_seconds: float) -> int:
-    """Corrige `raw_time_s` (timestamp de vela, tal cual lo entrega MT5) por
-    el offset de reloj del SERVIDOR del broker medido en vivo (ver
-    measure_broker_offset_seconds(), mt5_utils.py) -- no una suposicion de
-    "zona horaria del bróker" fija: se mide contra el reloj UTC real en cada
-    conexion (spec-estrategia.md #3.1) y puede dar ~0 si el servidor ya
-    corre en UTC (caso medido para la cuenta actual: -1.86s, ruido de red,
-    no una zona horaria completa) o varias horas si no. Con offset_seconds=0
-    esta funcion es la identidad -- no desplaza nada que ya venga en UTC.
-    Usado para alinear el bloque HTF (LiveSignalEngine); NO para el conteo
-    de rollovers de swap ni para el scoring de entradas, que usan el
-    timestamp crudo del servidor a proposito (ver comentarios en las
-    llamadas)."""
+    """Resta el offset de reloj del SERVIDOR del broker (medido en vivo con
+    measure_broker_offset_seconds(), mt5_utils.py) de `raw_time_s`.
+
+    NO se usa para el timestamp de las velas que entra al motor de señal
+    (replay_startup()/process_closed_bar(), ver spec-estrategia.md #3.1,
+    enmienda 2026-09-04): incluso 1-2s de correccion pueden desplazar una
+    vela situada justo en el limite de sesion (ej. 22:00:00) al bloque
+    equivocado, y el offset ya se loguea aparte como diagnostico (connect())
+    sin hacer falta aplicarlo a nada. Se deja esta funcion (con su test en
+    execution/src/test_timestamp_offset.py) como utilidad aislada, por si en
+    algun momento hace falta corregir un timestamp para otro proposito --
+    hoy mismo no la llama nadie en el camino de EMA/HTF/señal."""
     return raw_time_s - round(offset_seconds)
 
 # Etiquetas legibles para el motivo real que MT5 guarda en su propio historial
@@ -200,7 +200,14 @@ class LiveExecutionBot:
         closed = rates[:-1]  # la ultima posicion es la vela en formacion -- nunca se usa
         self.signal_engine = LiveSignalEngine(self.params)
         for r in closed:
-            self.signal_engine.process_bar(_corrected_utc_seconds(int(r["time"]), self._offset_seconds),
+            # NO se corrige por _offset_seconds aca (enmienda 2026-09-04,
+            # spec-estrategia.md #3.1): el timestamp de apertura que entrega
+            # copy_rates_* se pasa tal cual al motor de señal. Corregirlo
+            # (aunque sea por 1-2s de jitter) puede desplazar una vela
+            # situada justo en el limite de sesion (ej. 22:00:00) al bloque
+            # equivocado -- measure_broker_offset_seconds() sigue midiendose
+            # y logueandose (uso diagnostico), pero ya no altera esta vela.
+            self.signal_engine.process_bar(int(r["time"]),
                                             float(r["high"]), float(r["low"]), float(r["close"]))
         self._last_processed_time = int(closed[-1]["time"])
         self._log(f"Replay: {len(closed)} velas cerradas procesadas ({lookback_min}min de lookback). "
@@ -528,14 +535,20 @@ class LiveExecutionBot:
         return [r for r in closed if int(r["time"]) > self._last_processed_time]
 
     def process_closed_bar(self, r) -> None:
-        raw_time = int(r["time"])                          # hora de SERVIDOR sin corregir
-        t = _corrected_utc_seconds(raw_time, self._offset_seconds)  # UTC corregido -- solo para el bloque HTF (motor de señal)
+        raw_time = int(r["time"])  # timestamp de apertura tal cual lo entrega copy_rates_* -- SIN corregir
+        # NO se aplica _offset_seconds aca (enmienda 2026-09-04, spec-estrategia.md
+        # #3.1): se pasa raw_time tal cual al motor de señal (EMA/HTF/armado).
+        # measure_broker_offset_seconds() sigue midiendose y logueandose al
+        # conectar (uso diagnostico, ver connect()), pero ya no altera el
+        # timestamp de la vela -- ni siquiera 1-2s de jitter, que alcanzarian
+        # para desplazar una vela situada justo en el limite de sesion (ej.
+        # 22:00:00) al bloque equivocado.
+        t = raw_time
         high, low, close = float(r["high"]), float(r["low"]), float(r["close"])
 
         # _watch_open/_watch_pending cuentan barras REALES via copy_rates_range
-        # (mismo sistema de tiempo que time_setup/time de MT5: hora de servidor,
-        # no corregida) -- ver _bars_between. El offset solo importa para
-        # alinear el bloque HTF con la epoca UTC, no para esto.
+        # (mismo sistema de tiempo que time_setup/time de MT5: hora de servidor)
+        # -- ver _bars_between. Nunca se corrigieron por el offset, no cambia.
         self._watch_open(raw_time)
         self._watch_pending(high, low, raw_time)
 
