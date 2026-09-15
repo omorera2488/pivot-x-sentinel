@@ -56,8 +56,9 @@ def get_live_costs(symbol: str) -> BrokerCosts:
     mt5.shutdown()
     return BrokerCosts(
         point=si.point,
-        contract_size=si.trade_contract_size,
+        contract_size=si.trade_contract_size,  # informativo -- NO se usa para precio->USD (BOT-043)
         tick_value=si.trade_tick_value,
+        tick_size=si.trade_tick_size,          # BOT-043: junto con tick_value, la conversion precio->USD real
         swap_long_points=si.swap_long,
         swap_short_points=si.swap_short,
         commission_per_lot=0.0,          # SUPUESTO: cuenta Standard, spread-only (pendiente de confirmar)

@@ -226,7 +226,9 @@ def run_backtest(
     trades: list[Trade] = []
 
     def risk_usd(stop, entry):
-        return abs(stop - entry) * costs.contract_size * params.fixed_lot
+        # BOT-043: precio->USD via costs.price_to_usd() (tick_value/tick_size),
+        # NO contract_size -- ver nota de modulo en strategy/costs.py.
+        return costs.price_to_usd(abs(stop - entry), params.fixed_lot)
 
     def close_open_trade(pos, i, outcome, exit_price):
         sp = costs.spread_price(spread_pts[i])
@@ -234,12 +236,15 @@ def run_backtest(
         raw_risk = risk_usd(pos["stop"], pos["entry_price"])
 
         pnl_price = (pos["entry_price_adj"] - exit_adj) if pos["dir"] < 0 else (exit_adj - pos["entry_price_adj"])
-        pnl_usd = pnl_price * costs.contract_size * params.fixed_lot
+        pnl_usd = costs.price_to_usd(pnl_price, params.fixed_lot)
 
         open_date = _server_date(time_server[pos["open_bar"]])
         close_date = _server_date(time_server[i])
         nights = max((close_date - open_date).days, 0)
-        pnl_usd -= costs.swap_total_usd(pos["dir"], params.fixed_lot, open_date, close_date)
+        # BOT-043: swap_total_usd() ya viene CON signo (negativo = costo) --
+        # se SUMA, restarlo lo acreditaria en vez de cobrarlo (bug encontrado
+        # y corregido en esta tarea, ver strategy/costs.py::swap_total_usd).
+        pnl_usd += costs.swap_total_usd(pos["dir"], params.fixed_lot, open_date, close_date)
         pnl_usd -= costs.commission_usd(params.fixed_lot)
 
         pnl_r = pnl_usd / raw_risk if raw_risk > 0 else float("nan")

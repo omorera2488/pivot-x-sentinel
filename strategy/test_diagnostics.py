@@ -30,7 +30,7 @@ from strategy.engine import StrategyParams, run_backtest
 from strategy.live_signal import LiveSignalEngine
 
 ZERO_COST = BrokerCosts(
-    point=1.0, contract_size=1.0, tick_value=1.0,
+    point=1.0, contract_size=1.0, tick_value=1.0, tick_size=1.0,
     swap_long_points=0.0, swap_short_points=0.0,
     commission_per_lot=0.0, spread_fallback_points=0.0,
 )

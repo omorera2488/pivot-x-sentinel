@@ -14,6 +14,22 @@ cada `releases/vX.Y.Z/`) describe específicamente ESE artefacto instalable.
 
 ## [Unreleased]
 
+### Fixed
+
+- **BOT-043** — corregido el modelo de costos del motor de backtest
+  (`strategy/costs.py`, `strategy/engine.py`): el swap se restaba con el
+  signo ya invertido (se acreditaba en vez de cobrarse) y la conversión de
+  precio a USD usaba `contract_size` en vez de `tick_value/tick_size`,
+  subvaluando el PnL/riesgo real en precio por 100x en símbolos donde esos
+  dos no coinciden (confirmado contra `mt5.order_calc_profit()`). Nuevo
+  `BrokerCosts.price_to_usd()` como único punto de conversión, nuevo campo
+  `BrokerCosts.tick_size`, y 9 tests nuevos en `strategy/test_costs.py` que
+  antes no existían (el motor no tenía ninguna cobertura con swap≠0). **No
+  afecta la ejecución en vivo** — `execution/src/bot.py` no importa
+  `strategy/costs.py`, este código corre solo en `/backtests`. Invalida los
+  resultados ya publicados de BOT-008 para cualquier combinación con trades
+  mantenidos overnight (ver `BACKLOG.md`).
+
 ## [1.0.0] - 2026-09-04
 
 Primer release formal — instalador distribuible, sistema de versionado, y

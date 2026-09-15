@@ -41,7 +41,8 @@ def get_live_costs(symbol: str) -> BrokerCosts:
     si = mt5.symbol_info(symbol)
     mt5.shutdown()
     return BrokerCosts(
-        point=si.point, contract_size=si.trade_contract_size, tick_value=si.trade_tick_value,
+        point=si.point, contract_size=si.trade_contract_size,  # contract_size: informativo, ver BOT-043
+        tick_value=si.trade_tick_value, tick_size=si.trade_tick_size,
         swap_long_points=si.swap_long, swap_short_points=si.swap_short,
         commission_per_lot=0.0, triple_swap_weekday=2, spread_fallback_points=si.spread,
     )

@@ -8,7 +8,7 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 
 **Regla de trabajo (ver también el pie de este archivo):** antes de implementar algo importante, buscar o crear su ID acá, pasarlo a `IN PROGRESS`, implementar, correr los tests, y recién pasarlo a `DONE` con la versión donde quedó. Nunca borrar un ítem — si se cancela, pasa a `CANCELLED` con el motivo.
 
-**IDs:** secuenciales, nunca se reutilizan aunque el ítem se cancele. Última ID usada: **BOT-045**.
+**IDs:** secuenciales, nunca se reutilizan aunque el ítem se cancele. Última ID usada: **BOT-044**.
 
 **Convenciones:**
 - Estados: `TODO` · `IN PROGRESS` · `BLOCKED` · `DONE` · `CANCELLED`
@@ -104,13 +104,13 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 
 ### BOT-008 — Re-ejecutar el barrido de Fase 3 con la lógica HTF actual
 - **Categoría:** Backtest
-- **Estado:** DONE
+- **Estado:** DONE — ⚠️ **RESULTADOS HISTÓRICOS INVALIDADOS, REQUIERE RE-RUN** (ver BOT-043)
 - **Prioridad:** CRITICAL
 - **Incorporado:** 2026-08-19 (ampliado 2026-09-03)
 - **Versión objetivo/alcanzada:** sin release asociado (resultado de barrido, no cambio de código de producto)
 - **Descripción:** El único barrido de backtest que existía (`docs/spec-backtest.md` §8, 3.780 combinaciones sobre M5 real) había corrido contra la lógica HTF **vieja** — reemplazada dos veces desde entonces: "bloque en formación" (BOT-005, 2026-08-19) y "alineado a sesión" (BOT-004, 2026-09-03). Re-ejecutado el 2026-09-15: datos frescos descargados (100.505 velas M5, `XAUUSDc`, 2025-04-14 a 2026-09-15), barrido completo (`03_run_sweep.py`) y prueba de robustez en 3 sub-períodos (`04_run_robustness.py`) — ambos corriendo ya contra `htf_session.py` (BOT-004).
-- **Notas técnicas:** `backtests/scripts/03_run_sweep.py` y `04_run_robustness.py` tenían `SYMBOL = "XAUUSDm"` hardcodeado (bróker/cuenta vieja) — corregido para usar `resolve_symbol("XAUUSD")` (mismo mecanismo que BOT-011), resuelto en runtime antes de conectar, no como constante de import. Resultados en `backtests/results/sweep_full_M5.csv`, `sweep_top20_M5.csv`, `robustness_subperiods_M5.csv` — a pedido explícito del usuario, el contenido/interpretación del resultado no se documenta ni se discute acá (ver `docs/claude-memory/pivot-x-sentinel-no-backtest-talk.md`); el ítem se cierra por haberse *ejecutado*, no por el resultado obtenido.
-- **Dependencias:** BOT-004, BOT-005.
+- **Notas técnicas:** `backtests/scripts/03_run_sweep.py` y `04_run_robustness.py` tenían `SYMBOL = "XAUUSDm"` hardcodeado (bróker/cuenta vieja) — corregido para usar `resolve_symbol("XAUUSD")` (mismo mecanismo que BOT-011), resuelto en runtime antes de conectar, no como constante de import. Resultados en `backtests/results/sweep_full_M5.csv`, `sweep_top20_M5.csv`, `robustness_subperiods_M5.csv` — a pedido explícito del usuario, el contenido/interpretación del resultado no se documenta ni se discute acá (ver `docs/claude-memory/pivot-x-sentinel-no-backtest-talk.md`); el ítem se cierra por haberse *ejecutado*, no por el resultado obtenido. **Actualización 2026-09-15 (BOT-043):** el motor con el que corrió este barrido tenía el bug de costos de BOT-043 (swap acreditado en vez de cobrado + precio→USD subvaluado 100x). La corrida de control de BOT-043 sobre Config A con params idénticos confirma el impacto: mismo `n_trades`/`win_rate` (2.474 / 49.37%, esos no dependen de USD), pero Net R pasa de **+588.44 a −114.22** y Profit Factor de **1.476 a 0.912** con el motor corregido — es decir, este barrido (`sweep_full_M5.csv`, `sweep_top20_M5.csv`, `robustness_subperiods_M5.csv`) está corrido con el motor viejo y sus resultados **no son confiables** para ninguna combinación con trades `nights_held>0` (la gran mayoría de las 3.780). Este ítem se mantiene DONE porque el trabajo de *ejecutarlo* está hecho y no se re-abre solo, pero cualquier decisión que dependa de sus números debe esperar un re-run explícito con el motor corregido (fuera de alcance de BOT-043, ver nota de BOT-042).
+- **Dependencias:** BOT-004, BOT-005. Ver BOT-043 (bug de costos que invalida los resultados) y BOT-042 (pendiente de re-run).
 
 ### BOT-009 — Motor de backtest con costos reales (implementación)
 - **Categoría:** Backtest
@@ -121,6 +121,49 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 - **Descripción:** Motor implementado en `/backtests`, corrido sobre datos reales de XAUUSDm M5 (1.4 años, 100k velas). El *motor* está terminado y probado; el *resultado* de ese barrido específico está obsoleto (ver BOT-008).
 - **Notas técnicas:** `docs/spec-backtest.md` §8 documenta el resultado del barrido viejo (sin edge robusto — hallazgo estructural del armado persistente, no un bug).
 - **Dependencias:** ninguna.
+
+### BOT-042 — Comparación A/B controlada y optimización aislada de RR sobre Config A
+- **Categoría:** Backtest
+- **Estado:** BLOCKED (BOT-043 ya está resuelto y validado — el bloqueo ahora es "falta re-ejecutar", no "falta corregir")
+- **Prioridad:** MEDIUM
+- **Incorporado:** 2026-09-14
+- **Versión objetivo/alcanzada:** sin release asociado (análisis, no cambio de código de producto)
+- **Descripción:** Análisis puntual a pedido del usuario, en dos partes: (1) comparación A/B controlada entre la config real del bot (EMA=12, HTF=800, Buffer=0.4, RR=1.0) y la ganadora de BOT-008 (EMA=17, HTF=800, Buffer=2.2, RR=3.0), mismo motor/dataset/costos que BOT-008, sin sweep nuevo; (2) Etapa 1 — aislar el efecto de RR sobre Config A manteniendo EMA/HTF/Buffer fijos y variando solo RR∈{1,2,3,4,5,7}, B únicamente como referencia. Ninguna de las dos partes tocó `strategy/`, `execution/` ni la configuración de producción.
+- **Notas técnicas:** Al validar el cálculo de R (pedido explícito del usuario antes de sacar conclusiones de RR) se encontró BOT-043 — un problema de fondo en el modelo de costos que invalida materialmente ambas comparaciones para cualquier trade con `nights_held>0`. No se avanzó a Etapa 2 (variar EMA/Buffer) ni se emitió una recomendación de RR. **Actualización 2026-09-15:** BOT-043 quedó corregido, testeado y mergeado a `main`. Este ítem sigue BLOCKED (a pedido explícito del usuario, sección 8/9 de la tarea de BOT-043: "BOT-042 debe permanecer BLOCKED") porque el trabajo de BOT-043 fue exclusivamente corregir el motor + una corrida de control de Config A/RR=1 — **no** incluyó re-ejecutar la comparación A/B ni el barrido de RR∈{1,2,3,4,5,7} de este ítem con el motor ya corregido. Sigue pendiente: repetir exactamente el mismo experimento de este ítem (comparación A/B + Etapa 1 de RR + subperíodos + rachas) con `strategy/engine.py`/`strategy/costs.py` post-fix antes de sacar cualquier conclusión sobre RR o sobre A vs B.
+- **Dependencias:** BOT-008, BOT-043 (resuelto — ver commit `fix(backtest): correct swap accounting and risk calculation (BOT-043)`; falta el re-run de este ítem en sí, no ya la corrección del motor).
+
+### BOT-043 — Bug: signo invertido del swap + escala de riesgo (1R) inconsistente en el motor de backtest
+- **Categoría:** Backtest
+- **Estado:** DONE
+- **Prioridad:** CRITICAL
+- **Incorporado:** 2026-09-14
+- **Versión objetivo/alcanzada:** ver `CHANGELOG.md`/`VERSION` (corrección del motor de backtest, no de la estrategia live)
+- **Descripción:** Encontrado durante BOT-042 al validar el cálculo de R a pedido del usuario. Dos causas raíz confirmadas, ambas en `strategy/engine.py` / `strategy/costs.py`:
+  1. **Signo del swap invertido.** `close_open_trade()` hacía `pnl_usd -= costs.swap_total_usd(...)`, pero `swap_total_usd()` ya devuelve el monto CON signo (negativo = costo real, ej. `swap_long=-533.9` en XAUUSDc). Restar un número ya negativo lo acreditaba al trade en vez de cobrárselo.
+  2. **Precio→USD vía `contract_size` en vez de `tick_value/tick_size`.** `risk_usd()` y el cálculo de `pnl_usd` multiplicaban `price_diff * contract_size * fixed_lot`. Validado contra `mt5.order_calc_profit()` (referencia de la propia plataforma, ver `strategy/test_costs.py::test_i_live_order_calc_profit_cross_check`): para XAUUSDc de esta cuenta (símbolo en la categoría `Cent\Forex\XAUUSDc` del bróker), `contract_size=1.0` pero `tick_value/tick_size=100` — la fórmula vieja infravaloraba el PnL/riesgo real en precio por **exactamente 100x**, confirmado en múltiples combinaciones de lote/movimiento de precio contra `order_calc_profit()`. Este era el origen real de que el swap pareciera "demasiado grande" frente a 1R: no era que el swap estuviera mal escalado, era que el riesgo en precio estaba subvaluado 100x mientras el swap (que ya usaba `tick_value` directamente) no.
+- **Fix:** Nuevo método único de conversión `BrokerCosts.price_to_usd(price_diff, lot)` (`price_diff / tick_size * tick_value * lot`), usado tanto para `raw_risk` como para el PnL de precio — un solo punto de verdad. `swap_usd_per_lot_per_night()` reescrito para pasar por la misma conversión (antes coincidía con la fórmula correcta solo porque `tick_size==point` en XAUUSDc; ahora es general). `close_open_trade()`: `pnl_usd += costs.swap_total_usd(...)` (antes `-=`). Campo nuevo `BrokerCosts.tick_size`; `contract_size` se conserva en el dataclass solo a título informativo, ya no se usa para convertir precio→USD.
+- **Archivos modificados:** `strategy/costs.py` (campo `tick_size`, método `price_to_usd()`, `swap_usd_per_lot_per_night()` reescrito, docstrings), `strategy/engine.py` (`risk_usd()` y `close_open_trade()` usan `price_to_usd()`, signo de swap corregido), `backtests/scripts/03_run_sweep.py` y `04_run_robustness.py` (pasan `tick_size=si.trade_tick_size` al construir `BrokerCosts`), `strategy/test_engine.py` y `strategy/test_diagnostics.py` (`ZERO_COST` con `tick_size=1.0`).
+- **Archivo nuevo:** `strategy/test_costs.py` — 9 tests: (A) `price_to_usd()` contra valores de referencia de `mt5.order_calc_profit()` capturados en vivo + no regresión en un símbolo "estándar" sintético; (B) swap_long negativo da costo negativo; (C) swap_short usa el campo correcto (dirección); (D) `nights_held=0` → `swap_total_usd()==0.0` exacto; (E) día de triple swap cobrado 3x, resto 1x; (F/G) cadena completa de PnL (bruto→spread→swap firmado→comisión→neto→1R→R realizado) para un ganador y un perdedor, contra cálculo manual independiente, corrida end-to-end por `run_backtest`; (H) swap negativo reduce el PnL de un LONG overnight frente al mismo trade sin swap; (I) cross-check en vivo contra `mt5.order_calc_profit()` (se salta sola si no hay MT5 conectado, no bloquea la suite).
+- **Tests — resultado de la suite completa (9 scripts, los 8 preexistentes + el nuevo):** `strategy/test_engine.py`, `strategy/test_htf_session.py`, `strategy/test_diagnostics.py`, `strategy/test_scoring.py`, `strategy/test_costs.py`, `execution/src/test_mt5_validation.py`, `execution/src/test_timestamp_offset.py`, `api/test_start_mt5_validation.py`, `scripts/test_release_lib.py` — **TODOS OK**, sin fallos, corridos antes y después del fix (los 8 preexistentes no cambiaron su resultado, cero regresiones).
+- **Evidencia de la corrección — corrida de control (Config A: EMA=12, HTF=800, Buffer=0.4, RR=1, mismo dataset `XAUUSDc_M5_latest.parquet`):**
+
+  | Métrica | Motor anterior (con bug) | Motor corregido |
+  |---|---:|---:|
+  | Trades | 2,474 | 2,474 |
+  | Win Rate | 49.37% | 49.37% |
+  | Net R | 588.44 | **−114.22** |
+  | Expectancy R/trade | 0.238 | **−0.046** |
+  | Profit Factor | 1.476 | **0.912** |
+  | Max Drawdown (R) | 27.93 | 140.66 |
+  | Recovery Factor | 21.07 | **−0.81** |
+  | Max Losing Streak | 10 | 10 (sin cambio — depende solo de outcome win/loss, no de USD) |
+  | % trades overnight | 6.8% | 6.8% (sin cambio — no depende de USD) |
+
+  Con el motor corregido, Config A (la configuración real del bot) da **expectancy negativa** sobre este dataset — el resultado positivo reportado antes era en gran parte artefacto del bug. Trades/WR/% overnight no cambian (no dependen de USD); todo lo que sí depende de la conversión precio→USD o del swap cambia sustancialmente.
+- **Impacto conocido:** No afecta la cuenta real / ejecución en vivo (el swap ahí lo aplica el bróker directamente, este código solo corre en `/backtests`). Sí invalida los resultados ya publicados de BOT-008 (`sweep_full_M5.csv`, `sweep_top20_M5.csv`, `robustness_subperiods_M5.csv`) para cualquier combinación con trades `nights_held>0` — BOT-008 actualizado con esta nota, marcado como requiere re-run. BOT-042 (comparación A/B + Etapa 1 de RR) sigue BLOCKED — el motor ya está corregido pero ese experimento específico no se re-ejecutó en esta tarea (fuera de alcance explícito, ver notas de BOT-042).
+- **Revisión adicional (pedida explícitamente antes de cerrar):** se re-examinó el comportamiento ya documentado "stop del lado incorrecto / stop recalculado dentro del bloque HTF" (`docs/spec-backtest.md` §4.4) para descartar que también invalidara matemáticamente `realized_r`. Conclusión: **no lo hace** — con `entrada_viva=False` (el caso de A y B), entry/stop/target quedan congelados en el momento de la señal, ambos derivados de la misma barra `i` (mismo `resistencia[i]`/`soporte[i]`/`ema_line[i]`); `raw_risk` y `pnl_r` son internamente consistentes con esos valores congelados. Ese comportamiento es una característica de diseño de la estrategia (por qué algunas señales quedan descartadas por `n_skip_stop`), no un defecto de contabilidad — no se creó un BOT-XXX nuevo para esto. Corrección de una atribución anterior: en el análisis de BOT-042 se había atribuido parte de los "loss" con R positivo de Config B a este comportamiento — con la evidencia de esta tarea, ese patrón se explica enteramente por el bug de signo de swap (punto 1 arriba), no por el stop del lado incorrecto.
+- **Hallazgo independiente NO corregido acá (ver BOT-044):** `strategy/scoring.py::cvp_score()` usa el mismo patrón `commission_usd/(contract_size*fixed_lot)` para convertir comisión a precio — mismo problema de fondo, pero en código que corre en VIVO (`execution/src/bot.py`), fuera de alcance de esta tarea (que se restringió a "exclusivamente el modelo/cálculo del backtest"). Actualmente sin impacto real porque `execution/src/bot.py` pasa `commission_usd=0.0` hardcodeado. Ver BOT-044.
+- **Dependencias:** BOT-007, BOT-009. Desbloqueaba BOT-042 (parcialmente — ver nota de BOT-042) y reabre BOT-008.
 
 ---
 
@@ -287,6 +330,16 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 - **Descripción:** Permitir rechazar una entrada si su score queda por debajo de un umbral configurable (`minimum_entry_score = 70`, por ejemplo). El diseño de `scoring.py` ya contempla esto para el factor CVP específicamente ("el gate... está descripto en el diseño pero deliberadamente desactivado en esta primera pasada") — falta generalizarlo al score total y exponerlo como configuración.
 - **Notas técnicas:** Debe seguir siendo una capa que se pueda desactivar — no reemplazar la lógica base de señales (`engine.py`/`live_signal.py`).
 - **Dependencias:** BOT-023, BOT-024 (para que el umbral tenga una escala estable antes de fijar un default razonable).
+
+### BOT-044 — `scoring.py::cvp_score()` convierte comisión a precio con `contract_size` (mismo patrón que BOT-043, en código que corre en vivo)
+- **Categoría:** Scoring
+- **Estado:** TODO
+- **Prioridad:** LOW (sin impacto real hoy — ver por qué abajo)
+- **Incorporado:** 2026-09-15
+- **Versión objetivo:** sin definir
+- **Descripción:** Encontrado como efecto colateral de investigar BOT-043 (NO corregido ahí — BOT-043 se restringió explícitamente a "el modelo/cálculo del backtest", esto corre en vivo). `strategy/scoring.py::cvp_score()` calcula `commission_price = commission_usd / (contract_size * fixed_lot)` para convertir una comisión en USD a un equivalente en precio (línea ~251). Es el mismo patrón de conversión que BOT-043 encontró incorrecto en `strategy/engine.py` — debería usar `tick_value/tick_size` (ej. vía algo como `BrokerCosts.price_to_usd()`, ahora que existe), no `contract_size`, por la misma razón: en XAUUSDc de esta cuenta `contract_size=1.0` pero `tick_value/tick_size=100`, así que esta fórmula subvaluaría `commission_price` por 100x si `commission_usd` fuera distinto de cero.
+- **Notas técnicas:** **Sin impacto real hoy:** `execution/src/bot.py:502` llama a `scoring.score_entry(..., commission_usd=0.0, ...)` hardcodeado ("no hay commission_per_lot configurado en el bot en vivo todavia") — con `commission_usd=0.0`, `commission_price` da `0.0` sin importar la fórmula, así que el score CVP actual no está afectado. El gate de CVP además está desactivado a propósito (`margen<=0` no bloquea, solo se registra — ver BOT-025). Pasaría a importar en el momento en que alguien configure `commission_per_lot` para el scoring en vivo — antes de eso, arreglarlo es una mejora de correctness sin urgencia. `strategy/scoring.py::score_entry()` (línea ~384) y `strategy/test_scoring.py` (fixtures con `contract_size=1.0`) también usan/testean este parámetro y quedarían afectados por cualquier cambio de firma.
+- **Dependencias:** BOT-007 (modelo de costos), BOT-023 (scoring).
 
 ---
 
@@ -467,7 +520,7 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 Antes de implementar cualquier funcionalidad nueva importante:
 
 1. Revisar este `BACKLOG.md`.
-2. Crear o identificar el ID correspondiente (siguiente disponible: **BOT-042**).
+2. Crear o identificar el ID correspondiente (siguiente disponible: **BOT-045**).
 3. Cambiarlo a `IN PROGRESS` al comenzar.
 4. Implementar.
 5. Correr los tests correspondientes (ver los scripts `test_*.py` de cada módulo — no hay `pytest` instalado en el entorno, se corren como script plano: `python strategy/test_engine.py`, etc.).
