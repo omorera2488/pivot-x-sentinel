@@ -586,3 +586,44 @@ DIAGNÓSTICO → HIPÓTESIS → PRUEBA CONTROLADA → ROBUSTEZ → VALIDACIÓN �
 ```
 
 Evitar explícitamente: "agregar varios indicadores/filtros simultáneamente y quedarse con la combinación que dé mayor beneficio" — el objetivo es minimizar overfitting y poder atribuir cualquier mejora a una causa concreta, no a la mejor combinación encontrada por fuerza bruta. BOT-045 es el primer ítem que sigue esta regla explícitamente: cubre únicamente la etapa de Diagnóstico/Hipótesis, no autoriza por sí solo pasar a Prueba controlada ni a las etapas siguientes.
+
+---
+
+## VALIDATION-D1-OOS — Validación Out-of-Sample genuina de D1
+
+**Estado:** PENDING
+**Prioridad:** FUTURE VALIDATION
+
+### Objetivo
+
+Cuando exista suficiente histórico nuevo posterior al **15 de septiembre de 2026**, repetir exactamente la metodología de **BOT-046 — Dirección/D1 + Robustez Temporal** para validar las hipótesis encontradas sobre alineación con la tendencia diaria D1.
+
+### Regla fundamental
+
+Los datos posteriores al **2026-09-15** constituyen el primer **Out-of-Sample genuino**, ya que no participaron en BOT-045 ni BOT-046 ni en la generación de sus hipótesis.
+
+Al ejecutar esta validación:
+
+- NO modificar las hipótesis de BOT-046.
+- NO modificar thresholds.
+- NO modificar la definición de D1.
+- NO optimizar parámetros utilizando los nuevos datos.
+- NO redefinir qué significa `aligned_with_d1`.
+- NO seleccionar únicamente períodos favorables.
+
+Se debe aplicar sobre los nuevos datos exactamente la hipótesis congelada actualmente.
+
+### Hipótesis principal congelada
+
+Evaluar nuevamente si:
+
+- operar **alineado con la tendencia D1** continúa superando a operar **contra D1**;
+- `LONG + contra D1` continúa siendo un régimen especialmente desfavorable;
+- `SHORT + alineado D1` continúa siendo un régimen favorable;
+- la diferencia de expectancy `D1 aligned − D1 against` conserva signo y magnitud relevantes.
+
+### Dependencia
+
+No ejecutar hasta disponer de una cantidad suficiente de datos posteriores al **2026-09-15** para que la validación tenga una muestra razonable.
+
+Este ticket es exclusivamente de **validación futura** y no autoriza ninguna modificación de producción.
