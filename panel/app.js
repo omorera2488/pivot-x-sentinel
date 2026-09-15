@@ -37,8 +37,17 @@ async function apiPost(path, body) {
   });
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
-    try { detail = (await res.json()).detail || detail; } catch {}
-    throw new Error(detail);
+    try {
+      const parsed = (await res.json()).detail;
+      if (parsed !== undefined && parsed !== null) detail = parsed;
+    } catch {}
+    // `detail` puede ser un string (caso general, ver .message abajo) o un
+    // objeto estructurado (ej. BOT-032: {reason: "daily_loss_kill_switch",
+    // ...}) -- se conserva sin perder informacion en err.detail, ademas de
+    // un .message legible, para no romper a quien solo lea err.message.
+    const err = new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    if (typeof detail === "object") err.detail = detail;
+    throw err;
   }
   return res.json();
 }

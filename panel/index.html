@@ -24,6 +24,14 @@
 </div>
 
 <div class="err-banner" id="err"></div>
+<div class="err-banner" id="killSwitchBanner"></div>
+<div class="err-banner" id="killSwitchConfirm">
+  <div id="killSwitchConfirmText"></div>
+  <div class="toolbar" style="margin-top:10px;">
+    <button type="button" class="nav" id="btnKillSwitchCancel">Cancelar</button>
+    <button type="button" class="start" id="btnKillSwitchConfirm">Iniciar de todas formas</button>
+  </div>
+</div>
 
 <section class="grid">
   <div class="card">
@@ -112,6 +120,25 @@ function renderStatus(s) {
   if (s.symbol) document.getElementById("mSymbol").textContent = s.symbol;
 }
 
+function renderKillSwitch(s) {
+  // BOT-032: distinto de "DETENIDO" (proceso parado) -- el bot puede seguir
+  // corriendo (watchers/SL/TP/timeout de posiciones abiertas activos) con
+  // las entradas nuevas bloqueadas, por eso es un banner aparte, no el badge
+  // ACTIVO/DETENIDO de arriba (ver docs/reports/BOT-032_kill_switch.md).
+  const ks = s.kill_switch;
+  const banner = document.getElementById("killSwitchBanner");
+  if (ks && ks.enabled && ks.triggered && !ks.override_active) {
+    const pnl = ks.realized_daily_pnl === null || ks.realized_daily_pnl === undefined
+      ? "no disponible (MT5 sin datos)" : fmtUSD(ks.realized_daily_pnl);
+    banner.innerHTML = `<b>DETENIDO — Máxima pérdida diaria alcanzada</b><br>` +
+      `P&L realizado del día operativo (${ks.operating_date}): ${pnl} · ` +
+      `Límite configurado: -${fmtUSD(ks.daily_max_loss_usd)}`;
+    banner.classList.add("show");
+  } else {
+    banner.classList.remove("show");
+  }
+}
+
 function renderAccount(acc) {
   document.getElementById("balance").textContent = fmtUSD(acc.balance);
   document.getElementById("equity").textContent = fmtUSD(acc.equity);
@@ -194,6 +221,7 @@ async function refresh() {
   try {
     const s = await apiGet("/status");
     renderStatus(s);
+    renderKillSwitch(s);
     clearError("err");
 
     const [acc, positions, orders, events] = await Promise.all([
@@ -223,22 +251,60 @@ async function refresh() {
   }
 }
 
-document.getElementById("btnStart").addEventListener("click", async () => {
+let killSwitchPendingBody = null;
+
+function hideKillSwitchConfirm() {
+  killSwitchPendingBody = null;
+  document.getElementById("killSwitchConfirm").classList.remove("show");
+}
+
+// BOT-032 #8: si /start responde 409 {reason: "daily_loss_kill_switch", ...}
+// (limite ya alcanzado, sin override valido para el dia operativo actual),
+// se muestra la confirmacion en vez del error-banner generico -- "Cancelar"
+// deja todo igual (el bot sigue detenido), "Iniciar de todas formas" reintenta
+// /start con acknowledge_daily_loss_override=true (backend graba el override,
+// #9).
+async function attemptStart(body) {
+  const msg = document.getElementById("msg");
+  document.getElementById("btnStart").disabled = true;
+  msg.textContent = "Procesando…";
+  try {
+    await apiPost("/start", body);
+    msg.textContent = "Bot iniciado";
+    hideKillSwitchConfirm();
+    await refresh();
+  } catch (err) {
+    msg.textContent = "";
+    document.getElementById("btnStart").disabled = false;
+    if (err.detail && err.detail.reason === "daily_loss_kill_switch") {
+      killSwitchPendingBody = body;
+      const d = err.detail;
+      const pnl = d.realized_daily_pnl === null || d.realized_daily_pnl === undefined
+        ? "no disponible (MT5 sin datos)" : fmtUSD(d.realized_daily_pnl);
+      document.getElementById("killSwitchConfirmText").innerHTML =
+        `<b>Máxima pérdida diaria alcanzada</b><br>` +
+        `El bot alcanzó la pérdida máxima configurada para el día operativo ${d.operating_date}.<br>` +
+        `P&L realizado: ${pnl} · Límite: -${fmtUSD(d.daily_max_loss_usd)}<br>` +
+        `¿Está seguro de que desea iniciar el bot de todas formas?`;
+      document.getElementById("killSwitchConfirm").classList.add("show");
+    } else {
+      showError("err", err);
+    }
+  }
+}
+
+document.getElementById("btnStart").addEventListener("click", () => {
   // ver config.html: los defaults van como base, un pending viejo sin
   // campos nuevos (ej. una_operacion_a_la_vez) no debe perderlos.
   const defaults = { profile: "5m", symbol: "XAUUSD", magic: 900001, poll_interval_s: 10, live: true, una_operacion_a_la_vez: true };
   const pending = { ...defaults, ...(loadPendingConfig() || {}) };
-  const msg = document.getElementById("msg");
-  try {
-    document.getElementById("btnStart").disabled = true;
-    msg.textContent = "Procesando…";
-    await apiPost("/start", pending);
-    msg.textContent = "Bot iniciado";
-    await refresh();
-  } catch (err) {
-    msg.textContent = "";
-    showError("err", err);
-  }
+  attemptStart(pending);
+});
+
+document.getElementById("btnKillSwitchCancel").addEventListener("click", hideKillSwitchConfirm);
+document.getElementById("btnKillSwitchConfirm").addEventListener("click", () => {
+  if (!killSwitchPendingBody) return;
+  attemptStart({ ...killSwitchPendingBody, acknowledge_daily_loss_override: true });
 });
 
 document.getElementById("btnStop").addEventListener("click", async () => {

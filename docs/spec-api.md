@@ -8,8 +8,8 @@ Implementada en [/api](../api) (`api/app.py`, FastAPI). Un solo proceso — la A
 
 | Método | Ruta | Qué devuelve | Depende de que el bot esté corriendo |
 |---|---|---|---|
-| GET | `/status` | Si el bot está corriendo, símbolo/perfil/magic/`dry_run`/parámetros activos | No (da nulls si nunca arrancó) |
-| POST | `/start` | Arranca el bot (conecta, replay de arranque, lanza el thread). Body: `symbol`, `profile`, `magic`, `poll_interval_s`, `live` (default `false` = dry-run) | — |
+| GET | `/status` | Si el bot está corriendo, símbolo/perfil/magic/`dry_run`/parámetros activos, `operating_timezone` (BOT-032, siempre presente) y `kill_switch` (BOT-032, `null` si nunca arrancó esta sesión) | No (da nulls si nunca arrancó) |
+| POST | `/start` | Arranca el bot (conecta, replay de arranque, lanza el thread). Body: `symbol`, `profile`, `magic`, `poll_interval_s`, `live` (default `false` = dry-run), `daily_max_loss_enabled`/`daily_max_loss_usd`/`acknowledge_daily_loss_override` (BOT-032, ver §6) | — |
 | POST | `/stop` | Para el bot (señal + `join` del thread) | Sí (409 si no está corriendo) |
 | GET | `/account` | `balance`/`equity`/`margin`/etc. — `mt5.account_info()` tal cual | No |
 | GET | `/positions` | Posiciones abiertas, filtradas por `symbol`+`magic` (query params, con default) | No |
@@ -42,3 +42,48 @@ Pensada para correr en la misma máquina que la terminal MT5, consultada por el 
 1. **Persistencia del log de eventos** — hoy vive en memoria (`bot.events`, tope 1000 entradas), se pierde si el proceso se reinicia. Si hace falta historial más largo, pasar a un archivo append-only — no implementado todavía porque no hizo falta para el criterio de aceptación de esta fase.
 2. **Autenticación** — deliberadamente ausente (§3), a agregar si la API deja de ser solo-localhost.
 3. **Un solo bot por proceso** — `/start` rechaza si ya hay uno corriendo (409). Correr dos perfiles a la vez (ej. 1m y 5m simultáneos) necesitaría permitir múltiples instancias, no contemplado en esta fase.
+
+## 6. Kill switch de pérdida diaria (BOT-032)
+
+**No hay ningún mecanismo de configuración persistida server-side todavía** (§5.1 aplica igual acá) — `daily_max_loss_enabled`/`daily_max_loss_usd` solo existen en el body de `POST /start`, igual que cualquier otro parámetro de `StrategyParams`. Por eso el chequeo de "arranque con el límite ya alcanzado" (ver `docs/spec-live-execution.md` §12) vive DENTRO del handler de `/start`, no en un endpoint aparte.
+
+**Campos nuevos de `StartRequest`:**
+
+| Campo | Tipo | Default | Validación |
+|---|---|---|---|
+| `daily_max_loss_enabled` | bool | `false` | — |
+| `daily_max_loss_usd` | float\|null | `null` | Obligatorio y `> 0` si `daily_max_loss_enabled=true` (422 si no) |
+| `acknowledge_daily_loss_override` | bool | `false` | El panel lo manda `true` solo en el reintento después de que el usuario confirmó el popup |
+
+**`POST /start` puede devolver `409` con un `detail` ESTRUCTURADO (no un string, a diferencia del resto de los 409/503 de este archivo)** cuando el límite ya está alcanzado y no hay un override válido para el día operativo actual:
+
+```json
+{
+  "reason": "daily_loss_kill_switch",
+  "operating_date": "2026-09-15",
+  "operating_timezone": "America/Costa_Rica",
+  "realized_daily_pnl": -512.34,
+  "daily_max_loss_usd": 500.0
+}
+```
+
+El panel (`panel/app.js::apiPost`) conserva este objeto en `err.detail` (además de un `.message` legible) precisamente para poder mostrar el popup de confirmación con estos números, en vez del banner de error genérico.
+
+**`GET /status`** agrega, siempre que `daily_max_loss_enabled` haya sido usado alguna vez en esta sesión del bot:
+
+```json
+{
+  "operating_timezone": "America/Costa_Rica",
+  "kill_switch": {
+    "enabled": true,
+    "daily_max_loss_usd": 500.0,
+    "operating_date": "2026-09-15",
+    "realized_daily_pnl": -512.34,
+    "triggered": true,
+    "override_active": false,
+    "data_unavailable": false
+  }
+}
+```
+
+`kill_switch` es `null` si nunca se creó un `LiveExecutionBot` en esta sesión del proceso (igual que `symbol`/`params`/etc. de más arriba). `operating_timezone` SIEMPRE está presente (no depende de que haya un bot) — es la fuente de verdad que `panel/calendar.html` consume para agrupar por día operativo sin depender de la timezone del navegador.

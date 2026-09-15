@@ -94,6 +94,16 @@
     </label>
 
     <label class="setting">
+      <b><input type="checkbox" id="daily_max_loss_enabled"> Activar máxima pérdida diaria</b>
+      <small>Kill switch (BOT-032): al alcanzar esta pérdida NETA realizada del día operativo, el bot deja de colocar operaciones nuevas -- las que ya están abiertas siguen gestionándose con normalidad (SL/TP, tiempo máximo). Reactivar requiere confirmación explícita.</small>
+    </label>
+    <label class="setting">
+      <b>Máxima pérdida diaria (USD)</b>
+      <small id="dailyMaxLossHint">Obligatorio y mayor a 0 si "Activar máxima pérdida diaria" está marcado. El día operativo se define en el backend (no depende de la hora de tu PC/navegador).</small>
+      <input type="number" id="daily_max_loss_usd" min="0.01" step="0.01">
+    </label>
+
+    <label class="setting">
       <b>Magic number</b>
       <small>Identifica las órdenes de este bot en MT5 — nunca toca posiciones manuales con otro magic number.</small>
       <input type="number" id="magic" min="1" step="1">
@@ -124,13 +134,18 @@
 <script>
 const FIELDS = ["symbol", "magic", "poll_interval_s", "live", "ema_periods", "periodos_htf_min",
   "buf_bp", "rr", "max_concurrent_por_direccion", "valid_bars", "orden_viva", "max_bars_trade",
-  "fixed_lot", "entrada_viva", "una_operacion_a_la_vez"];
+  "fixed_lot", "entrada_viva", "una_operacion_a_la_vez",
+  "daily_max_loss_enabled", "daily_max_loss_usd"];
 
 function getEl(id) { return document.getElementById(id); }
 
 function syncConcurrencyToggle() {
   const unaSola = getEl("una_operacion_a_la_vez").checked;
   getEl("max_concurrent_por_direccion").disabled = unaSola;
+}
+
+function syncDailyLossToggle() {
+  getEl("daily_max_loss_usd").disabled = !getEl("daily_max_loss_enabled").checked;
 }
 
 function readForm() {
@@ -151,6 +166,7 @@ function fillForm(cfg) {
     else el.value = cfg[f];
   }
   syncConcurrencyToggle();
+  syncDailyLossToggle();
 }
 
 let profileDefaults = {};
@@ -197,10 +213,18 @@ async function init() {
 
 getEl("profile").addEventListener("change", (e) => applyProfileDefaults(e.target.value, true));
 getEl("una_operacion_a_la_vez").addEventListener("change", syncConcurrencyToggle);
+getEl("daily_max_loss_enabled").addEventListener("change", syncDailyLossToggle);
 
 getEl("cfgForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const cfg = readForm();
+  if (cfg.daily_max_loss_enabled && !(cfg.daily_max_loss_usd > 0)) {
+    const errEl = getEl("err");
+    errEl.textContent = "Máxima pérdida diaria: ingresá un monto en USD mayor a 0.";
+    errEl.classList.add("show");
+    return;
+  }
+  clearError("err");
   savePendingConfig(cfg);
   try {
     const s = await apiGet("/status");

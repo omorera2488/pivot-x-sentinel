@@ -15,7 +15,7 @@
 </div>
 
 <h1>Resultados por día operativo</h1>
-<div class="sub" id="scope">Calculado con el historial de operaciones cerradas de MT5 (<code>GET /history</code>), agrupado por día local.</div>
+<div class="sub" id="scope">Calculado con el historial de operaciones cerradas de MT5 (<code>GET /history</code>), agrupado por día operativo (<span id="tzLabel">--</span>) -- ver BOT-032, no depende de la hora de este navegador/PC.</div>
 
 <div class="err-banner" id="err"></div>
 
@@ -42,9 +42,31 @@ let allTrades = [];
 let cursor = new Date();
 cursor.setDate(1);
 
+// BOT-032 #5: la frontera del dia (y por lo tanto el mes que agrupa este
+// calendario) la define el BACKEND (`operating_timezone`, GET /status) --
+// nunca la zona horaria de este navegador/PC. `Intl.DateTimeFormat` con
+// `timeZone` explicito trae la base IANA completa en cualquier navegador
+// moderno, asi que esto funciona sin hardcodear ningun offset.
+let OPERATING_TZ = "UTC";
+
+function operatingDateParts(unixSeconds, tz) {
+  const dtf = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+  });
+  const parts = Object.fromEntries(dtf.formatToParts(new Date(unixSeconds * 1000)).map((p) => [p.type, p.value]));
+  return { year: Number(parts.year), month: Number(parts.month) - 1, day: Number(parts.day) };
+}
+
 async function load() {
   try {
     const s = await apiGet("/status");
+    OPERATING_TZ = s.operating_timezone || "UTC";
+    document.getElementById("tzLabel").textContent = OPERATING_TZ;
+    // Mes inicial = mes del dia operativo ACTUAL, no el mes local del
+    // navegador (pueden diferir cerca de la medianoche/fin de mes).
+    const today = operatingDateParts(Math.floor(Date.now() / 1000), OPERATING_TZ);
+    cursor = new Date(today.year, today.month, 1);
+
     const qs = s.symbol ? `?symbol=${s.symbol}&magic=${s.magic}&days=3650` : "?days=3650";
     const history = await apiGet("/history" + qs);
     allTrades = closedTrades(history);
@@ -66,9 +88,9 @@ function render() {
 
   const byDay = {};
   for (const t of allTrades) {
-    const d = new Date(t.time * 1000);
-    if (d.getFullYear() !== year || d.getMonth() !== month) continue;
-    const key = d.getDate();
+    const d = operatingDateParts(t.time, OPERATING_TZ);
+    if (d.year !== year || d.month !== month) continue;
+    const key = d.day;
     if (!byDay[key]) byDay[key] = [];
     byDay[key].push(t);
   }

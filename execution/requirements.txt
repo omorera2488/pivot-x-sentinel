@@ -1,1 +1,4 @@
 MetaTrader5
+# BOT-032: zoneinfo (dia operativo, execution/src/operating_day.py) necesita
+# la base de datos IANA -- Windows no la trae como Linux/macOS.
+tzdata

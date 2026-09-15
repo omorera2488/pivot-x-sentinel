@@ -31,14 +31,15 @@ import MetaTrader5 as mt5
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from execution.src.bot import LiveExecutionBot
-from execution.src.mt5_utils import mt5_lock, resolve_symbol
+from execution.src.mt5_utils import mt5_lock, resolve_symbol, filter_own_deals
 from execution.src.mt5_validation import MT5NotReadyError
 from execution.src.paths import app_root
 from execution.src.version import get_version
 from execution.src import score_store
+from execution.src import kill_switch, kill_switch_store, operating_day
 from strategy.profiles import PROFILES
 
 app = FastAPI(title="pivot-x-sentinel API", version=get_version())
@@ -79,6 +80,24 @@ class StartRequest(BaseModel):
     entrada_viva: bool | None = None
     una_operacion_a_la_vez: bool | None = None
 
+    # BOT-032 (kill switch / maxima perdida diaria) -- proteccion del motor de
+    # ejecucion, no un parametro de estrategia: a proposito NO entra en
+    # overrides()/StrategyParams (ver execution/src/bot.py, LiveExecutionBot
+    # los recibe como named args explicitos, igual que dry_run/poll_interval_s).
+    daily_max_loss_enabled: bool = False
+    daily_max_loss_usd: float | None = None
+    # True solo cuando el usuario ya confirmo el popup "Iniciar de todas
+    # formas" (BOT-032 #8/#9) -- el panel lo manda en el reintento de /start
+    # despues del 409 de abajo. No persiste en localStorage: cada intento de
+    # arranque explicito debe declarar conscientemente que esta overrideando.
+    acknowledge_daily_loss_override: bool = False
+
+    @model_validator(mode="after")
+    def _validar_daily_max_loss(self) -> "StartRequest":
+        if self.daily_max_loss_enabled and not (self.daily_max_loss_usd is not None and self.daily_max_loss_usd > 0):
+            raise ValueError("daily_max_loss_usd es obligatorio y debe ser > 0 cuando daily_max_loss_enabled=true")
+        return self
+
     def overrides(self) -> dict:
         fields = ("ema_periods", "periodos_htf_min", "buf_bp", "rr",
                    "max_concurrent_por_direccion", "valid_bars", "orden_viva",
@@ -109,6 +128,51 @@ def _require_mt5():
             raise HTTPException(503, f"No se pudo conectar a MT5: {mt5.last_error()}")
 
 
+def _kill_switch_gate(req: "StartRequest") -> None:
+    """BOT-032 -- corre DENTRO de /start, ANTES de crear el LiveExecutionBot:
+    hoy no existe ningun mecanismo de configuracion persistida server-side
+    (ver docs/reports/BOT-032_kill_switch.md) -- el limite/monto solo existen
+    en el body de ESTE request, igual que cualquier otro parametro del bot
+    (StrategyParams). Por eso el chequeo de "arranque con el limite ya
+    alcanzado" (#14) tiene que vivir aca, no en un endpoint aparte: es el
+    UNICO momento en que el backend conoce el limite configurado antes de que
+    exista un LiveExecutionBot corriendo.
+
+    No hace nada si `req.daily_max_loss_enabled` es False (comportamiento
+    actual intacto, #1/#20)."""
+    if not req.daily_max_loss_enabled:
+        return
+
+    _require_mt5()
+    with mt5_lock:
+        symbol = resolve_symbol(req.symbol)
+        now = datetime.now(timezone.utc)
+        start_utc, end_utc, op_date = operating_day.operating_day_bounds_utc(now)
+        pnl = kill_switch.daily_realized_pnl(symbol, req.magic, start_utc, end_utc)
+
+    # Fail-safe (#19): si no se pudo calcular el P&L, se trata como
+    # disparado -- nunca se asume 0.0 y se deja arrancar sin mas.
+    triggered = pnl is None or pnl <= -req.daily_max_loss_usd
+    if not triggered:
+        return
+
+    override_date = kill_switch_store.load_override_date(symbol, req.magic)
+    ya_overrideado_hoy = override_date == op_date
+    if ya_overrideado_hoy or req.acknowledge_daily_loss_override:
+        # Idempotente -- confirmar de nuevo el mismo dia operativo no hace
+        # nada distinto (#10: no se vuelve a pedir el popup ese mismo dia).
+        kill_switch_store.record_override(symbol, req.magic, op_date)
+        return
+
+    raise HTTPException(409, detail={
+        "reason": "daily_loss_kill_switch",
+        "operating_date": op_date.isoformat(),
+        "operating_timezone": operating_day.DEFAULT_OPERATING_TIMEZONE,
+        "realized_daily_pnl": pnl,
+        "daily_max_loss_usd": req.daily_max_loss_usd,
+    })
+
+
 # ---- control del bot ------------------------------------------------------
 
 @app.get("/version")
@@ -130,6 +194,11 @@ def status():
         "dry_run": _bot.dry_run if _bot else None,
         "params": _bot.params.__dict__ if _bot else None,
         "started_at": _started_at.isoformat() if _started_at else None,
+        # BOT-032: la timezone del dia operativo es fuente de verdad del
+        # backend (nunca del navegador, ver panel/calendar.html) -- siempre
+        # presente, no depende de que haya un bot corriendo esta sesion.
+        "operating_timezone": operating_day.DEFAULT_OPERATING_TIMEZONE,
+        "kill_switch": _bot.kill_switch_status() if _bot else None,
     }
 
 
@@ -140,9 +209,13 @@ def start(req: StartRequest):
         if _bot_running():
             raise HTTPException(409, "El bot ya esta corriendo -- llama a /stop primero")
 
+        _kill_switch_gate(req)  # BOT-032 -- puede levantar 409 (requiere confirmacion) antes de crear el bot
+
         bot = LiveExecutionBot(
             symbol=req.symbol, profile=req.profile, magic=req.magic,
             poll_interval_s=req.poll_interval_s, dry_run=not req.live,
+            daily_max_loss_enabled=req.daily_max_loss_enabled,
+            daily_max_loss_usd=req.daily_max_loss_usd,
             **req.overrides(),
         )
         try:
@@ -249,17 +322,10 @@ def history(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC,
         deals = mt5.history_deals_get(date_from, date_to)
     if deals is None:
         return []
-    # No se filtra cada deal individualmente por magic: el deal de CIERRE de
-    # una posicion cerrada a mano desde el terminal MT5 no hereda el magic de
-    # la posicion (viene con magic=0, no es un cierre "Expert") -- filtrar
-    # deal por deal descartaba esa mitad del par y la operacion desaparecia
-    # de /history aunque la apertura sí tuviera nuestro magic (visto en vivo
-    # 2026-08-31). En cambio: primero se identifican las POSICIONES nuestras
-    # (la apertura -- entry=0 -- con nuestro magic+simbolo), y se devuelven
-    # TODOS los deals de esas posiciones, sea cual sea el magic de cada leg.
-    mis_posiciones = {d.position_id for d in deals
-                       if d.entry == mt5.DEAL_ENTRY_IN and d.magic == magic and d.symbol == sym}
-    return [d._asdict() for d in deals if d.position_id in mis_posiciones]
+    # Reconciliacion segura (deal de cierre manual sin magic propio) extraida
+    # a mt5_utils.filter_own_deals() -- BOT-032 (kill switch) la reusa para no
+    # reintroducir este mismo bug en el calculo de P&L diario.
+    return [d._asdict() for d in filter_own_deals(deals, magic, sym)]
 
 
 # ---- panel estatico (Fase 6) -----------------------------------------------

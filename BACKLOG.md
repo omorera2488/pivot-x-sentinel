@@ -31,7 +31,7 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 2. ~~**BOT-008** — Re-run completo del sweep~~ `DONE` — re-ejecutado con el motor corregido: ESCENARIO A marginal (edge real pero delgado, PF~1.05, dos configuraciones — `cfg_1260`/`cfg_1278` — positivas en USD en los 3 sub-períodos), ver `docs/reports/BOT-008_rerun_post_BOT043.md`. Próximo paso recomendado (no ejecutado): validación Out-of-Sample genuina sobre esas dos configuraciones, mismo criterio que `VALIDATION-D1-OOS` — no se abre automáticamente otro sweep ni se cambia producción.
 
    **Con BOT-008 cerrado, la línea de investigación/optimización sobre este espacio de parámetros queda CERRADA** (ver "DECISIÓN — Cierre temporal de optimización histórica" al final del archivo) — `cfg_1260`/`cfg_1278` y la hipótesis D1 quedan congeladas para `VALIDATION-CONFIG-OOS`/`VALIDATION-D1-OOS` (futuro, con datos OOS posteriores al 2026-09-15, no ejecutar todavía). El proyecto retoma la secuencia funcional/operativa ya acordada — **próxima US activa: BOT-032** (punto 3 abajo).
-3. **BOT-032** — Kill switch / máxima pérdida (`HIGH`) — protección de capital, mejora independiente de la optimización de estrategia. ← **próxima US activa**
+3. ~~**BOT-032** — Kill switch / máxima pérdida~~ `DONE` (v1.1.0) — protección de capital, mejora independiente de la optimización de estrategia. Ver detalle en "Gestión de riesgo" abajo y `docs/reports/BOT-032_kill_switch.md`.
 4. **BOT-024 + BOT-025** — Normalización y gate de scoring (`LOW`/`MEDIUM`) — evaluar su implementación ahora que se conocen los resultados de BOT-045 (factores de scoring existentes sin poder explicativo robusto salvo lo ya cubierto por BOT-046). BOT-025 sigue dependiendo de BOT-024.
 5. **BOT-033** — Alerta de noticias económicas (`MEDIUM`).
 6. **BOT-038** — Checklist de validación (`HIGH`) — revisar/redefinir considerando que el bot ya está operando en real.
@@ -463,12 +463,16 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
 
 ### BOT-032 — Kill switch: máxima pérdida configurable
 - **Categoría:** Riesgo
-- **Estado:** TODO
+- **Estado:** DONE
 - **Prioridad:** HIGH
 - **Incorporado:** 2026-09-14
-- **Versión objetivo:** sin definir
+- **Versión objetivo:** v1.1.0
 - **Descripción:** Mecanismo configurable (`max_loss = 500`, por ejemplo) que, al alcanzar la pérdida acumulada definida, impida abrir nuevas operaciones, detenga el trading automático, cambie el estado visible del bot, y muestre un mensaje claro ("Maximum loss reached. Trading has been stopped."). La reactivación debe requerir una acción explícita/manual — no debe levantarse solo.
-- **Notas técnicas:** Sin código relacionado en el repo todavía (verificado: no hay ninguna mención de "kill switch"/"max_loss"/"drawdown máximo" en el código). Pendiente de diseño: (1) cómo se mide la "pérdida acumulada" — ¿por día, por sesión, desde que arrancó el bot, acumulado histórico?; (2) si las operaciones ya abiertas al momento de disparar el kill switch se siguen gestionando con normalidad (SL/TP/timeout) o se cierran de inmediato — el pedido explícita que "debe evaluarse posteriormente"; (3) dónde vive la config (perfil, panel) y cómo se expone el estado "detenido por kill switch" en `/status` y el panel, distinto de un `/stop` manual.
+- **Notas técnicas:** Implementado (ver `docs/reports/BOT-032_kill_switch.md` para el detalle completo, `docs/spec-live-execution.md` §12 y `docs/spec-api.md` §6). Resolución de las 3 preguntas de diseño que esta entrada dejaba abiertas:
+  1. **Cómo se mide la "pérdida acumulada":** P&L NETO REALIZADO del **día operativo** (`execution/src/operating_day.py`) — un día timezone-aware (IANA `America/Costa_Rica` por defecto, vía `zoneinfo`, nunca "UTC - 6" a mano), NO por sesión ni acumulado histórico. Se recalcula siempre desde `mt5.history_deals_get()` (nunca un contador en memoria) reusando la misma reconciliación segura de `/history` (`mt5_utils.filter_own_deals`).
+  2. **Operaciones ya abiertas:** siguen gestionándose con normalidad (SL/TP, `orden_viva`, `caduca`, `max_bars_trade`) — el kill switch NUNCA detiene el `run()` del bot, solo bloquea `_place_order()` para operaciones nuevas (decisión explícita del usuario, ver `docs/spec-live-execution.md` §12).
+  3. **Dónde vive la config y cómo se expone:** no hay (ni había) un mecanismo de settings persistido server-side — `daily_max_loss_enabled`/`daily_max_loss_usd` viajan en el body de `POST /start` igual que cualquier otro parámetro, y se validan ahí (Pydantic). El estado "detenido por kill switch" se expone en `GET /status` (`kill_switch: {enabled, triggered, override_active, realized_daily_pnl, ...}`), distinto de `running` (que sigue reflejando si el thread está vivo). El override diario SÍ persiste (`execution/src/kill_switch_store.py`, `user_data_root()`, sobrevive reinicios/upgrades).
+  **Tests:** 3 archivos nuevos (`execution/src/test_operating_day.py`, `execution/src/test_kill_switch.py`, `api/test_start_kill_switch.py`) sumados a la suite estándar del repo — **12/12 OK** (9 preexistentes + 3 nuevos), corridos antes y después del cambio, cero regresión. No se tocó ninguna línea de `strategy/` (estrategia/señal intacta por construcción).
 - **Dependencias:** BOT-010 (el motor de ejecución en vivo), BOT-017 (para exponer el estado nuevo por API).
 
 ---

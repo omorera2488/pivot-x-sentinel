@@ -128,6 +128,27 @@ def measure_broker_offset_seconds(symbol: str, samples: int = 3) -> float:
     return sum(offsets) / len(offsets)
 
 
+def filter_own_deals(deals, magic: int, symbol: str) -> list:
+    """De una lista cruda de deals (`mt5.history_deals_get()`), devuelve solo
+    los que pertenecen a POSICIONES propias -- extraido de `api/app.py::history()`
+    (agregado junto con BOT-032, kill switch, que necesita la misma
+    identificacion segura para no reintroducir el bug de abajo).
+
+    No se filtra cada deal individualmente por magic: el deal de CIERRE de una
+    posicion cerrada a mano desde el terminal MT5 no hereda el magic de la
+    posicion (viene con magic=0, no es un cierre "Expert") -- filtrar deal por
+    deal descartaba esa mitad del par y la operacion desaparecia del historial
+    aunque la apertura si tuviera nuestro magic (visto en vivo 2026-08-31). En
+    cambio: primero se identifican las POSICIONES nuestras (la apertura --
+    entry=0 -- con nuestro magic+simbolo), y se devuelven TODOS los deals de
+    esas posiciones, sea cual sea el magic de cada leg."""
+    if not deals:
+        return []
+    mis_posiciones = {d.position_id for d in deals
+                       if d.entry == mt5.DEAL_ENTRY_IN and d.magic == magic and d.symbol == symbol}
+    return [d for d in deals if d.position_id in mis_posiciones]
+
+
 def resolve_filling_mode(symbol: str) -> int:
     """Detecta en tiempo de ejecucion que modo de filling acepta el simbolo
     (spec-live-execution.md #11.3) — no se asume ORDER_FILLING_IOC/FOK/RETURN

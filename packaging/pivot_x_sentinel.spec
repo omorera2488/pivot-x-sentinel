@@ -37,6 +37,14 @@ HIDDEN_IMPORTS = [
     "uvicorn.lifespan",
     "uvicorn.lifespan.on",
     "email.mime.multipart",  # dependencia transitiva de starlette/fastapi (formularios)
+    # BOT-032 (kill switch): execution/src/operating_day.py usa zoneinfo, que
+    # en Windows resuelve nombres IANA via el paquete `tzdata` -- el hook de
+    # pyinstaller-hooks-contrib (hook-zoneinfo.py) ya lo agrega solo como
+    # hidden import en Windows al detectar `zoneinfo`, pero se deja explicito
+    # aca (mismo motivo que las lineas de uvicorn de arriba: no depender en
+    # silencio de una cadena de hooks de un paquete de terceros) + explicito
+    # en execution/requirements.txt para que el venv de build lo tenga instalado.
+    "tzdata",
 ]
 
 a = Analysis(

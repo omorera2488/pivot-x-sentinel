@@ -14,6 +14,32 @@ cada `releases/vX.Y.Z/`) describe específicamente ESE artefacto instalable.
 
 ## [Unreleased]
 
+### Added
+
+- **BOT-032** — Kill switch / máxima pérdida diaria: protección configurable
+  del motor de ejecución (`execution/src/bot.py`) que bloquea la colocación
+  de **nuevas** operaciones al alcanzar la pérdida NETA realizada del día
+  operativo (`daily_max_loss_usd`, activable desde Configuración en el
+  panel). Nunca detiene el `run()` del bot ni toca posiciones abiertas — SL/
+  TP, `orden_viva`, `caduca` y `max_bars_trade` siguen funcionando con
+  normalidad. Día operativo timezone-aware (`execution/src/operating_day.py`,
+  IANA `America/Costa_Rica` vía `zoneinfo`, nunca "UTC-6" hardcodeado) —
+  fuente de verdad del backend, expuesta en `GET /status` y consumida por
+  `panel/calendar.html` para que el calendario agrupe por el mismo día que
+  usa el kill switch (antes agrupaba por hora local del navegador). P&L
+  recalculado siempre desde `mt5.history_deals_get()` (nunca un contador en
+  memoria), reusando la reconciliación segura de `GET /history`
+  (`mt5_utils.filter_own_deals()`, extraída de `api/app.py::history()`) para
+  no perder deals de cierre manual sin magic propio. Fail-safe: si MT5 no
+  devuelve datos suficientes, se trata como disparado, nunca se asume P&L=$0.
+  Al dispararse, `POST /start` exige una confirmación explícita
+  (`acknowledge_daily_loss_override`) que arranca el bot y activa un
+  override persistente (`execution/src/kill_switch_store.py`,
+  `user_data_root()`, sobrevive reinicios/upgrades) válido por el resto del
+  día operativo — un día operativo nuevo lo invalida automáticamente, sin
+  timers. Ver `docs/spec-live-execution.md` §12, `docs/spec-api.md` §6 y
+  `docs/reports/BOT-032_kill_switch.md` para el detalle completo.
+
 ### Fixed
 
 - **BOT-043** — corregido el modelo de costos del motor de backtest

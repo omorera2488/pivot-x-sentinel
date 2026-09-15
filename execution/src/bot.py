@@ -56,6 +56,7 @@ from strategy import scoring
 from .mt5_utils import select_symbol, resolve_symbol, measure_broker_offset_seconds, resolve_filling_mode, mt5_lock
 from .mt5_validation import check_mt5_readiness, MT5NotReadyError
 from . import score_store
+from . import kill_switch, kill_switch_store, operating_day
 
 TIMEFRAME_BY_PROFILE = {"1m": mt5.TIMEFRAME_M1, "5m": mt5.TIMEFRAME_M5}
 SECONDS_BY_PROFILE = {"1m": 60, "5m": 300}
@@ -112,13 +113,27 @@ _ORDER_STATE_LABEL = {
 class LiveExecutionBot:
     def __init__(self, symbol: str, profile: str, magic: int,
                  poll_interval_s: int = 10, lookback_buckets: int = 3,
-                 dry_run: bool = False, **param_overrides):
+                 dry_run: bool = False,
+                 daily_max_loss_enabled: bool = False, daily_max_loss_usd: float | None = None,
+                 **param_overrides):
         self.symbol = symbol
         self.profile_name = normalize_profile_name(profile)
         self.magic = magic
         self.poll_interval_s = poll_interval_s
         self.lookback_buckets = lookback_buckets
         self.dry_run = dry_run
+
+        # BOT-032 (kill switch) -- proteccion del MOTOR DE EJECUCION, no un
+        # parametro de estrategia: a proposito NO vive en StrategyParams/
+        # strategy/profiles.py (esos son named args explicitos, nunca pasan
+        # por **param_overrides -> get_profile()).
+        self.daily_max_loss_enabled = daily_max_loss_enabled
+        self.daily_max_loss_usd = daily_max_loss_usd
+        self._daily_pnl: float | None = None
+        self._kill_switch_triggered: bool = False
+        self._kill_switch_override_active: bool = False
+        self._kill_switch_data_unavailable: bool = False
+        self._kill_switch_operating_date = None
 
         self.params: StrategyParams = get_profile(self.profile_name, **param_overrides)
         self.timeframe = TIMEFRAME_BY_PROFILE[self.profile_name]
@@ -183,6 +198,7 @@ class LiveExecutionBot:
         self._log(f"Offset servidor vs UTC: {self._offset_seconds:+.2f}s | "
                   f"digits={info.digits} point={info.point} filling_mode={self._filling_mode}")
         self._seed_known_state()
+        self._refresh_kill_switch_state()  # BOT-032 -- estado ya disponible en /status desde el connect()
 
     def _order_label(self, o) -> str:
         return "venta" if o.type == mt5.ORDER_TYPE_SELL_LIMIT else "compra"
@@ -250,6 +266,73 @@ class LiveExecutionBot:
         if self.params.una_operacion_a_la_vez:
             return len(self.my_orders()) + len(self.my_positions()), 1
         return self._concurrency_count(direction), self.params.max_concurrent_por_direccion
+
+    # ---- BOT-032: kill switch de perdida diaria -------------------------
+
+    def _refresh_kill_switch_state(self) -> None:
+        """Recalcula el estado del kill switch UNA VEZ por ciclo de `run()`,
+        SIEMPRE antes de `poll_once()` (ver docstring de `run()`) -- para que
+        cualquier decision de colocar una orden nueva en este ciclo use el
+        P&L mas fresco posible. Si `daily_max_loss_enabled` es False, no hace
+        nada (costo cero, comportamiento identico al actual -- BOT-032 #1).
+
+        Latencia residual documentada a proposito (BOT-032 #18): una perdida
+        que se realiza DENTRO de este mismo ciclo (ej. un cierre por tiempo
+        en `_watch_open`, que corre despues de este refresh dentro de
+        `process_closed_bar`) recien se refleja en el ciclo SIGUIENTE -- como
+        maximo `poll_interval_s` de retraso (10s tipico), mismo orden de
+        magnitud que la diferencia ya existente entre `_watch_pending` (por
+        vela) y `_watch_pending_live` (por tick)."""
+        if not self.daily_max_loss_enabled:
+            return
+
+        now = datetime.now(timezone.utc)
+        start_utc, end_utc, op_date = operating_day.operating_day_bounds_utc(now)
+        pnl = kill_switch.daily_realized_pnl(self.symbol, self.magic, start_utc, end_utc)
+
+        if pnl is None:
+            if not self._kill_switch_data_unavailable:
+                self._log("[BOT-032] AVISO: no se pudo calcular el P&L diario (MT5 sin datos) -- "
+                          "bloqueando nuevas operaciones por seguridad (fail-safe).")
+            self._kill_switch_data_unavailable = True
+            self._kill_switch_triggered = True
+        else:
+            if self._kill_switch_data_unavailable:
+                self._log("[BOT-032] P&L diario disponible nuevamente.")
+            self._kill_switch_data_unavailable = False
+            self._daily_pnl = pnl
+            was_triggered = self._kill_switch_triggered
+            self._kill_switch_triggered = pnl <= -self.daily_max_loss_usd
+            if self._kill_switch_triggered and not was_triggered:
+                self._log(f"[BOT-032] Daily realized P&L: {pnl:.2f} USD | limit=-{self.daily_max_loss_usd:.2f} -- "
+                          "Daily loss limit reached -- blocking new trading")
+            elif was_triggered and not self._kill_switch_triggered:
+                self._log(f"[BOT-032] Daily realized P&L: {pnl:.2f} USD dentro del limite -- "
+                          "New operating day or recovered P&L -- protection armed")
+
+        prev_override = self._kill_switch_override_active
+        override_date = kill_switch_store.load_override_date(self.symbol, self.magic)
+        self._kill_switch_override_active = override_date == op_date
+        if self._kill_switch_operating_date is not None and self._kill_switch_operating_date != op_date:
+            self._log(f"[BOT-032] New operating day ({op_date}) -- protection armed")
+        if prev_override and not self._kill_switch_override_active:
+            self._log(f"[BOT-032] Override del dia operativo anterior ya no aplica ({op_date})")
+        self._kill_switch_operating_date = op_date
+
+    def _kill_switch_blocking(self) -> bool:
+        return self.daily_max_loss_enabled and self._kill_switch_triggered and not self._kill_switch_override_active
+
+    def kill_switch_status(self) -> dict:
+        """Snapshot para GET /status (api/app.py) -- ver BOT-032 #15."""
+        return {
+            "enabled": self.daily_max_loss_enabled,
+            "daily_max_loss_usd": self.daily_max_loss_usd,
+            "operating_date": self._kill_switch_operating_date.isoformat() if self._kill_switch_operating_date else None,
+            "realized_daily_pnl": self._daily_pnl,
+            "triggered": self._kill_switch_triggered,
+            "override_active": self._kill_switch_override_active,
+            "data_unavailable": self._kill_switch_data_unavailable,
+        }
 
     # ---- vigilancia de pendientes / abiertas ----------------------------
 
@@ -581,6 +664,8 @@ class LiveExecutionBot:
                 activos, limite = self._effective_concurrency(signal.dir)
                 if activos >= limite:
                     self._log(f"Señal descartada: limite de concurrencia ({activos}/{limite})")
+                elif self._kill_switch_blocking():
+                    self._log("Señal descartada: kill switch de perdida diaria activo")
                 else:
                     entry_score = self._score_entry(signal.dir, signal.entry, signal.stop, signal.target, raw_time)
                     if entry_score is not None:
@@ -620,6 +705,7 @@ class LiveExecutionBot:
             try:
                 self._reported_this_cycle = set()
                 with mt5_lock:  # serializa contra la API (Fase 5), mismo proceso
+                    self._refresh_kill_switch_state()  # BOT-032 -- ANTES de poll_once(), ver docstring
                     n = self.poll_once()
                     self._watch_pending_live()  # tick en vivo, cada ciclo -- ver docstring
                     self._reconcile()  # auditoria: cualquier orden/posicion propia que
