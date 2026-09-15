@@ -14,6 +14,16 @@ cada `releases/vX.Y.Z/`) describe específicamente ESE artefacto instalable.
 
 ## [Unreleased]
 
+### Fixed
+
+- **BOT-032** — `panel/config.html`: el monto de "Máxima pérdida diaria
+  (USD)" quedaba como una tarjeta independiente de "Activar máxima pérdida
+  diaria" en vez de vivir dentro de la misma. Ahora el label+input del monto
+  viven DENTRO de la tarjeta del checkbox, y se ocultan por completo (sin
+  reservar espacio) mientras el checkbox esté desactivado — no solo
+  deshabilitados como antes. Cambio puramente de presentación: no se tocó
+  la persistencia ni la lógica de backend de BOT-032.
+
 ## [1.1.0] - 2026-09-15
 
 ### Added

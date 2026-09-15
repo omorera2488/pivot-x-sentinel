@@ -8,6 +8,8 @@
 
 Este documento es **autocontenido**: contiene contexto, diseño final, cómo se calculó cada cosa, resultado real de los tests, y el estado de git/versión, para que otra persona (o ChatGPT recibiendo solo este archivo) entienda qué se hizo sin depender de la conversación de Claude Code.
 
+**Addendum (v1.1.1, mismo día):** tras revisar el panel, el usuario pidió corregir la presentación de `panel/config.html` — el monto de "Máxima pérdida diaria (USD)" había quedado como una tarjeta `.setting` independiente en el grid, en vez de vivir dentro de la misma tarjeta del checkbox "Activar máxima pérdida diaria". Se corrigió: ahora el label+input del monto viven DENTRO de esa tarjeta, ocultos por completo (atributo `hidden`, no solo `disabled`) mientras el checkbox esté desactivado — no reservan espacio en el grid. Cambio puramente de presentación (`panel/config.html`, `panel/style.css`): la persistencia (`localStorage`, `StartRequest`) y toda la lógica de backend de BOT-032 quedaron intactas. Liberado como `v1.1.1` (PATCH) — ver `CHANGELOG.md`.
+
 ---
 
 ## Resumen ejecutivo
