@@ -1,0 +1,86 @@
+variable,sub_periodo,categoria,pct,n
+direction,sub1,SHORT,53.309265944645,443
+direction,sub1,LONG,46.690734055354994,388
+direction,sub2,SHORT,55.91677503250976,430
+direction,sub2,LONG,44.083224967490246,339
+direction,sub3,LONG,52.8604118993135,462
+direction,sub3,SHORT,47.139588100686495,412
+session_utc,sub1,Londres/NY (overlap),30.56558363417569,254
+session_utc,sub1,Asia,29.24187725631769,243
+session_utc,sub1,Londres,13.237063778580024,110
+session_utc,sub1,Post-NY / transicion,12.996389891696749,108
+session_utc,sub1,Nueva York,11.311672683513839,94
+session_utc,sub1,Asia/Londres (overlap),2.6474127557160045,22
+session_utc,sub2,Londres/NY (overlap),30.169050715214563,232
+session_utc,sub2,Asia,29.388816644993497,226
+session_utc,sub2,Londres,14.304291287386217,110
+session_utc,sub2,Nueva York,13.914174252275682,107
+session_utc,sub2,Post-NY / transicion,8.84265279583875,68
+session_utc,sub2,Asia/Londres (overlap),3.3810143042912877,26
+session_utc,sub3,Asia,31.23569794050343,273
+session_utc,sub3,Londres/NY (overlap),29.40503432494279,257
+session_utc,sub3,Londres,13.157894736842104,115
+session_utc,sub3,Post-NY / transicion,13.043478260869565,114
+session_utc,sub3,Nueva York,9.839816933638444,86
+session_utc,sub3,Asia/Londres (overlap),3.318077803203661,29
+weekday,sub1,Martes,21.780986762936223,181
+weekday,sub1,Miercoles,21.41997593261131,178
+weekday,sub1,Lunes,19.975932611311674,166
+weekday,sub1,Jueves,19.7352587244284,164
+weekday,sub1,Viernes,15.282791817087846,127
+weekday,sub1,Domingo,1.8050541516245486,15
+weekday,sub2,Miercoles,20.806241872561767,160
+weekday,sub2,Jueves,20.54616384915475,158
+weekday,sub2,Martes,19.63589076723017,151
+weekday,sub2,Lunes,18.985695708712612,146
+weekday,sub2,Viernes,18.725617685305593,144
+weekday,sub2,Domingo,1.3003901170351104,10
+weekday,sub3,Martes,22.99771167048055,201
+weekday,sub3,Miercoles,19.908466819221967,174
+weekday,sub3,Lunes,19.679633867276888,172
+weekday,sub3,Jueves,19.336384439359268,169
+weekday,sub3,Viernes,15.789473684210526,138
+weekday,sub3,Domingo,2.2883295194508007,20
+d1_trend,sub1,sin_secuencia,71.23947051744885,592
+d1_trend,sub1,alcista,15.523465703971121,129
+d1_trend,sub1,bajista,11.070998796630565,92
+d1_trend,sub1,insuficiente,2.166064981949458,18
+d1_trend,sub2,sin_secuencia,70.48114434330299,542
+d1_trend,sub2,alcista,22.366710013003903,172
+d1_trend,sub2,bajista,7.152145643693109,55
+d1_trend,sub3,sin_secuencia,77.34553775743707,676
+d1_trend,sub3,bajista,11.670480549199084,102
+d1_trend,sub3,alcista,10.983981693363845,96
+aligned_with_d1,sub1,nan,73.40553549939831,610
+aligned_with_d1,sub1,True,13.357400722021662,111
+aligned_with_d1,sub1,False,13.237063778580024,110
+aligned_with_d1,sub2,nan,70.48114434330299,542
+aligned_with_d1,sub2,False,15.99479843953186,123
+aligned_with_d1,sub2,True,13.52405721716515,104
+aligned_with_d1,sub3,nan,77.34553775743707,676
+aligned_with_d1,sub3,True,12.128146453089245,106
+aligned_with_d1,sub3,False,10.526315789473683,92
+divergencia_score,sub1,0,78.82069795427196,655
+divergencia_score,sub1,1,17.208182912154033,143
+divergencia_score,sub1,-1,3.9711191335740073,33
+divergencia_score,sub2,0,81.53446033810144,627
+divergencia_score,sub2,1,14.694408322496749,113
+divergencia_score,sub2,-1,3.7711313394018204,29
+divergencia_score,sub3,0,79.06178489702516,691
+divergencia_score,sub3,1,17.73455377574371,155
+divergencia_score,sub3,-1,3.203661327231121,28
+tendencia_score,sub1,0,90.1323706377858,749
+tendencia_score,sub1,-1,9.50661853188929,79
+tendencia_score,sub1,1,0.36101083032490977,3
+tendencia_score,sub2,0,90.50715214564369,696
+tendencia_score,sub2,-1,9.362808842652797,72
+tendencia_score,sub2,1,0.13003901170351106,1
+tendencia_score,sub3,0,91.18993135011442,797
+tendencia_score,sub3,-1,8.581235697940503,75
+tendencia_score,sub3,1,0.2288329519450801,2
+nodo_score,sub1,-1,86.40192539109506,718
+nodo_score,sub1,0,13.598074608904934,113
+nodo_score,sub2,-1,89.72691807542262,690
+nodo_score,sub2,0,10.273081924577374,79
+nodo_score,sub3,-1,89.93135011441647,786
+nodo_score,sub3,0,10.068649885583524,88
