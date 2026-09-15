@@ -12,6 +12,8 @@ Este bot **opera en vivo por defecto** (manda órdenes reales) contra la cuenta 
 
 El desarrollo avanza por fases, definidas y con criterios de aceptación explícitos, en **[docs/roadmap.md](docs/roadmap.md)**. Ese documento es la fuente de verdad del alcance y el orden de trabajo — cualquier cambio de plan se refleja ahí primero.
 
+Las tareas concretas (mejoras, bugs, funcionalidades pendientes) viven en **[BACKLOG.md](BACKLOG.md)** — fuente única de verdad del estado funcional/técnico, con ID, prioridad y estado por ítem. `docs/roadmap.md` define las fases; `BACKLOG.md` trackea el trabajo granular dentro (y fuera) de esas fases; `CHANGELOG.md` documenta qué se publicó en cada versión.
+
 ## Estructura
 
 ```

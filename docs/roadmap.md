@@ -2,6 +2,8 @@
 
 Este documento define las fases de desarrollo del bot de trading algorítmico para Oro (XAUUSD), basado en la lógica del indicador Pine "EMA y Pivotes ZS — trade boxes", adaptado para ejecución en vivo vía MetaTrader 5.
 
+Este documento define el **orden de las fases**. El trabajo granular dentro de cada fase (tareas, bugs, mejoras — con ID, prioridad y estado) vive en **[../BACKLOG.md](../BACKLOG.md)**, la fuente única de verdad para eso.
+
 **Regla de trabajo:** esta sesión se encarga de la definición, especificación, revisión y detección de problemas de cada fase. La implementación del código corre por cuenta del usuario / Claude Code local. Cada fase avanza cuando la anterior está completa.
 
 ---
