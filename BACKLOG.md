@@ -8,7 +8,7 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 
 **Regla de trabajo (ver también el pie de este archivo):** antes de implementar algo importante, buscar o crear su ID acá, pasarlo a `IN PROGRESS`, implementar, correr los tests, y recién pasarlo a `DONE` con la versión donde quedó. Nunca borrar un ítem — si se cancela, pasa a `CANCELLED` con el motivo.
 
-**IDs:** secuenciales, nunca se reutilizan aunque el ítem se cancele. Última ID usada: **BOT-044**.
+**IDs:** secuenciales, nunca se reutilizan aunque el ítem se cancele. Última ID usada: **BOT-045**.
 
 **Convenciones:**
 - Estados: `TODO` · `IN PROGRESS` · `BLOCKED` · `DONE` · `CANCELLED`
@@ -19,7 +19,24 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 
 ## Índice por categoría
 
-- [Arquitectura](#arquitectura) · [Estrategia](#estrategia) · [Backtest](#backtest) · [Ejecución en vivo](#ejecución-en-vivo) · [API](#api) · [Panel](#panel) · [Scoring de entradas](#scoring-de-entradas) · [Empaquetado y releases](#empaquetado-y-releases) · [Gestión de riesgo](#gestión-de-riesgo) · [Noticias económicas](#noticias-económicas) · [Validación y salida a real](#validación-y-salida-a-real) · [Deuda técnica y documentación](#deuda-técnica-y-documentación)
+- [Prioridad actual de trabajo](#prioridad-actual-de-trabajo) · [Arquitectura](#arquitectura) · [Estrategia](#estrategia) · [Backtest](#backtest) · [Ejecución en vivo](#ejecución-en-vivo) · [API](#api) · [Panel](#panel) · [Scoring de entradas](#scoring-de-entradas) · [Empaquetado y releases](#empaquetado-y-releases) · [Gestión de riesgo](#gestión-de-riesgo) · [Noticias económicas](#noticias-económicas) · [Validación y salida a real](#validación-y-salida-a-real) · [Deuda técnica y documentación](#deuda-técnica-y-documentación)
+
+---
+
+## Prioridad actual de trabajo
+
+*(Última actualización: 2026-09-15, ver BOT-045.)* Esta sección representa el **orden operativo recomendado** — puede diferir de la prioridad intrínseca (`CRITICAL`/`HIGH`/`MEDIUM`/`LOW`) de cada ítem, que no se modifica solo para coincidir con este orden. Por ejemplo, BOT-008 sigue siendo `CRITICAL` aunque BOT-045 se recomiende ejecutar primero.
+
+1. **BOT-045** — Market regime / calidad de entradas (`HIGH`) — investigación offline. No modifica producción.
+2. **BOT-008** — Re-run completo del sweep (`CRITICAL`) — ejecutar después de analizar BOT-045. Los resultados históricos actuales permanecen invalidados (ver BOT-043) mientras tanto.
+3. **BOT-032** — Kill switch / máxima pérdida (`HIGH`) — protección de capital, mejora independiente de la optimización de estrategia.
+4. **BOT-024 + BOT-025** — Normalización y gate de scoring (`LOW`/`MEDIUM`) — evaluar su implementación después de conocer los resultados de BOT-045 (que revisa si los factores de scoring existentes tienen poder explicativo real sobre winners/losers). BOT-025 sigue dependiendo de BOT-024.
+5. **BOT-033** — Alerta de noticias económicas (`MEDIUM`).
+6. **BOT-038** — Checklist de validación (`HIGH`) — revisar/redefinir considerando que el bot ya está operando en real.
+7. **BOT-044** — Fix de conversión de comisión en CVP (`LOW` mientras `commission_usd` siga siendo 0).
+8. **BOT-039 / BOT-040** — documentación/deuda técnica.
+
+BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal disponible para esa validación — decisión explícita de no crear infraestructura adicional (segunda instancia del bot/MT5, otra máquina, otra IP) solo para desbloquearlo; ver nota en el propio ítem. La investigación de estrategia (BOT-045 y lo que siga) se hace OFFLINE sobre datasets históricos y scripts de backtesting, sin necesitar una segunda sesión de MT5, y el bot productivo permanece aislado de estos experimentos.
 
 ---
 
@@ -109,8 +126,8 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 - **Incorporado:** 2026-08-19 (ampliado 2026-09-03)
 - **Versión objetivo/alcanzada:** sin release asociado (resultado de barrido, no cambio de código de producto)
 - **Descripción:** El único barrido de backtest que existía (`docs/spec-backtest.md` §8, 3.780 combinaciones sobre M5 real) había corrido contra la lógica HTF **vieja** — reemplazada dos veces desde entonces: "bloque en formación" (BOT-005, 2026-08-19) y "alineado a sesión" (BOT-004, 2026-09-03). Re-ejecutado el 2026-09-15: datos frescos descargados (100.505 velas M5, `XAUUSDc`, 2025-04-14 a 2026-09-15), barrido completo (`03_run_sweep.py`) y prueba de robustez en 3 sub-períodos (`04_run_robustness.py`) — ambos corriendo ya contra `htf_session.py` (BOT-004).
-- **Notas técnicas:** `backtests/scripts/03_run_sweep.py` y `04_run_robustness.py` tenían `SYMBOL = "XAUUSDm"` hardcodeado (bróker/cuenta vieja) — corregido para usar `resolve_symbol("XAUUSD")` (mismo mecanismo que BOT-011), resuelto en runtime antes de conectar, no como constante de import. Resultados en `backtests/results/sweep_full_M5.csv`, `sweep_top20_M5.csv`, `robustness_subperiods_M5.csv` — a pedido explícito del usuario, el contenido/interpretación del resultado no se documenta ni se discute acá (ver `docs/claude-memory/pivot-x-sentinel-no-backtest-talk.md`); el ítem se cierra por haberse *ejecutado*, no por el resultado obtenido. **Actualización 2026-09-15 (BOT-043):** el motor con el que corrió este barrido tenía el bug de costos de BOT-043 (swap acreditado en vez de cobrado + precio→USD subvaluado 100x). La corrida de control de BOT-043 sobre Config A con params idénticos confirma el impacto: mismo `n_trades`/`win_rate` (2.474 / 49.37%, esos no dependen de USD), pero Net R pasa de **+588.44 a −114.22** y Profit Factor de **1.476 a 0.912** con el motor corregido — es decir, este barrido (`sweep_full_M5.csv`, `sweep_top20_M5.csv`, `robustness_subperiods_M5.csv`) está corrido con el motor viejo y sus resultados **no son confiables** para ninguna combinación con trades `nights_held>0` (la gran mayoría de las 3.780). Este ítem se mantiene DONE porque el trabajo de *ejecutarlo* está hecho y no se re-abre solo, pero cualquier decisión que dependa de sus números debe esperar un re-run explícito con el motor corregido (fuera de alcance de BOT-043, ver nota de BOT-042).
-- **Dependencias:** BOT-004, BOT-005. Ver BOT-043 (bug de costos que invalida los resultados) y BOT-042 (pendiente de re-run).
+- **Notas técnicas:** `backtests/scripts/03_run_sweep.py` y `04_run_robustness.py` tenían `SYMBOL = "XAUUSDm"` hardcodeado (bróker/cuenta vieja) — corregido para usar `resolve_symbol("XAUUSD")` (mismo mecanismo que BOT-011), resuelto en runtime antes de conectar, no como constante de import. Resultados en `backtests/results/sweep_full_M5.csv`, `sweep_top20_M5.csv`, `robustness_subperiods_M5.csv` — a pedido explícito del usuario, el contenido/interpretación del resultado no se documenta ni se discute acá (ver `docs/claude-memory/pivot-x-sentinel-no-backtest-talk.md`); el ítem se cierra por haberse *ejecutado*, no por el resultado obtenido. **Actualización 2026-09-15 (BOT-043):** el motor con el que corrió este barrido tenía el bug de costos de BOT-043 (swap acreditado en vez de cobrado + precio→USD subvaluado 100x). La corrida de control de BOT-043 sobre Config A con params idénticos confirma el impacto: mismo `n_trades`/`win_rate` (2.474 / 49.37%, esos no dependen de USD), pero Net R pasa de **+588.44 a −114.22** y Profit Factor de **1.476 a 0.912** con el motor corregido — es decir, este barrido (`sweep_full_M5.csv`, `sweep_top20_M5.csv`, `robustness_subperiods_M5.csv`) está corrido con el motor viejo y sus resultados **no son confiables** para ninguna combinación con trades `nights_held>0` (la gran mayoría de las 3.780). Este ítem se mantiene DONE porque el trabajo de *ejecutarlo* está hecho y no se re-abre solo, pero cualquier decisión que dependa de sus números debe esperar un re-run explícito con el motor corregido (fuera de alcance de BOT-043, ver nota de BOT-042). **Actualización 2026-09-15 (BOT-045):** el re-run completo de este barrido (3.780 combinaciones) queda pendiente pero se recomienda ejecutarlo **después** de revisar los hallazgos de BOT-045 (análisis de régimen de mercado/calidad de entrada) — antes de volver a correr 3.780 combinaciones, conviene entender si hay variables de régimen de mercado que expliquen buena parte del comportamiento de la estrategia. Esto no cancela ni degrada la prioridad de BOT-008 (sigue CRITICAL, sus resultados siguen invalidados) — solo ordena el trabajo operativo, ver "Prioridad actual de trabajo" más abajo.
+- **Dependencias:** BOT-004, BOT-005. Ver BOT-043 (bug de costos que invalida los resultados), BOT-042 (re-run parcial ya hecho, aislado en RR) y BOT-045 (revisar antes del re-run completo del barrido).
 
 ### BOT-009 — Motor de backtest con costos reales (implementación)
 - **Categoría:** Backtest
@@ -164,6 +181,19 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 - **Revisión adicional (pedida explícitamente antes de cerrar):** se re-examinó el comportamiento ya documentado "stop del lado incorrecto / stop recalculado dentro del bloque HTF" (`docs/spec-backtest.md` §4.4) para descartar que también invalidara matemáticamente `realized_r`. Conclusión: **no lo hace** — con `entrada_viva=False` (el caso de A y B), entry/stop/target quedan congelados en el momento de la señal, ambos derivados de la misma barra `i` (mismo `resistencia[i]`/`soporte[i]`/`ema_line[i]`); `raw_risk` y `pnl_r` son internamente consistentes con esos valores congelados. Ese comportamiento es una característica de diseño de la estrategia (por qué algunas señales quedan descartadas por `n_skip_stop`), no un defecto de contabilidad — no se creó un BOT-XXX nuevo para esto. Corrección de una atribución anterior: en el análisis de BOT-042 se había atribuido parte de los "loss" con R positivo de Config B a este comportamiento — con la evidencia de esta tarea, ese patrón se explica enteramente por el bug de signo de swap (punto 1 arriba), no por el stop del lado incorrecto.
 - **Hallazgo independiente NO corregido acá (ver BOT-044):** `strategy/scoring.py::cvp_score()` usa el mismo patrón `commission_usd/(contract_size*fixed_lot)` para convertir comisión a precio — mismo problema de fondo, pero en código que corre en VIVO (`execution/src/bot.py`), fuera de alcance de esta tarea (que se restringió a "exclusivamente el modelo/cálculo del backtest"). Actualmente sin impacto real porque `execution/src/bot.py` pasa `commission_usd=0.0` hardcodeado. Ver BOT-044.
 - **Dependencias:** BOT-007, BOT-009. Desbloqueaba BOT-042 (parcialmente — ver nota de BOT-042) y reabre BOT-008.
+
+### BOT-045 — Análisis de régimen de mercado y calidad de entradas
+- **Categoría:** Backtest / Investigación
+- **Estado:** TODO
+- **Prioridad:** HIGH
+- **Incorporado:** 2026-09-15
+- **Versión objetivo/alcanzada:** sin release asociado (estudio diagnóstico offline, no cambio de código de producto)
+- **Descripción:** Análisis OFFLINE sobre las operaciones históricas de la estrategia (motor de backtesting corregido post BOT-043) para identificar qué condiciones de mercado están asociadas con operaciones ganadoras y perdedoras. El objetivo **no** es optimizar parámetros todavía ni agregar indicadores directamente a la estrategia — es generar evidencia que permita formular hipótesis antes de plantear nuevos sweeps u optimizaciones. Debe estudiar, como mínimo: tendencia diaria D1, dirección/tendencia HTF, relación de la entrada con la tendencia diaria, RSI, ADX, ATR/régimen de volatilidad, sesión de mercado, hora de entrada, día de semana, LONG vs SHORT, distancia del precio respecto a la EMA, características del bloque HTF, y los factores existentes de scoring cuando sea posible (Divergencia, Tendencia, CVP, Nodo — ver BOT-023). Debe comparar estas características entre: winners vs losers; sub1 vs sub2 vs sub3 de BOT-042; LONG vs SHORT; diferentes sesiones/horarios; diferentes regímenes de tendencia y volatilidad.
+  - **Pregunta principal:** ¿qué condiciones de mercado distinguen los períodos y operaciones donde la estrategia tiene edge de aquellos donde pierde?
+  - **Pregunta secundaria (especialmente importante):** ¿qué características tuvo sub2 — favorable para varias configuraciones en BOT-042 (único sub-período positivo en casi todas las variantes de RR probadas, incluida B) — que no estuvieron presentes de la misma manera en sub1 y sub3?
+- **Restricción fundamental:** debe ser explícitamente un estudio diagnóstico. NO debe: modificar la estrategia; agregar filtros al live bot; cambiar EMA/Buffer/HTF/RR/scoring; bloquear operaciones; optimizar combinaciones; seleccionar automáticamente una nueva configuración; modificar producción. Siempre que sea técnicamente correcto, los indicadores de temporalidades superiores deben derivarse de los datos históricos disponibles sin requerir una segunda instancia de MT5 (ver también la decisión de arquitectura documentada en "Prioridad actual de trabajo" más abajo). Debe evitar look-ahead bias explícitamente — por ejemplo, cualquier indicador D1 usado para evaluar una entrada M5 debe usar exclusivamente información que habría estado disponible en el momento de esa entrada. Si para alguna variable no existe información histórica suficiente, la limitación debe documentarse en vez de aproximar o inventar datos en silencio.
+- **Notas técnicas:** Sobre scoring — BOT-023 ya contiene información potencialmente útil (Divergencia, Tendencia, CVP, Nodo). BOT-045 debe revisar si esos factores tienen poder explicativo sobre winners/losers **antes** de decidir si BOT-024/BOT-025 deben usarse para filtrar operaciones; no debe asumirse que un score mayor implica mejor performance — debe comprobarse estadísticamente. Sigue la regla de experimentación documentada más abajo (Diagnóstico → Hipótesis → Prueba controlada → Robustez → Validación → Cambio en producción) — este ítem cubre únicamente la etapa de Diagnóstico/Hipótesis, no las posteriores.
+- **Dependencias:** BOT-042 (encontró que cambiar únicamente RR no solucionó Config A de forma robusta — RR=1 a RR=5 negativos en agregado, RR=7 el único positivo en agregado pero no robusto temporalmente, negativo en sub3 — BOT-045 investiga si existe una explicación de régimen de mercado/calidad de entrada antes de seguir modificando parámetros), BOT-043 (motor de costos corregido, requisito para que cualquier métrica de PnL/R de este análisis sea confiable), BOT-023 (factores de scoring a evaluar).
 
 ---
 
@@ -400,7 +430,7 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 - **Incorporado:** 2026-09-03
 - **Versión objetivo:** sin definir
 - **Descripción:** Todo lo de empaquetado (BOT-026 a BOT-030) se probó de punta a punta en la máquina de desarrollo, que ya tiene Python y una terminal MT5 propia operando en vivo. Falta un smoke test real en una PC sin Python preinstalado y con una terminal MT5 distinta.
-- **Notas técnicas:** Bloqueado por no tener acceso a una segunda máquina/terminal MT5 para probar — no es un problema de código conocido, es falta de entorno de prueba. Ver nota de seguridad en `packaging/README.md` (dev machine con el bot corriendo en vivo contra cuenta real durante las pruebas de instalador).
+- **Notas técnicas:** Bloqueado por no tener acceso a una segunda máquina/terminal MT5 para probar — no es un problema de código conocido, es falta de entorno de prueba. Ver nota de seguridad en `packaging/README.md` (dev machine con el bot corriendo en vivo contra cuenta real durante las pruebas de instalador). **Decisión 2026-09-15:** no se considera necesario crear infraestructura adicional (segunda instancia del bot, otro bot paralelo, otra instalación/sesión de MT5, otra IP, otra máquina) únicamente para desbloquear este ítem — la investigación de estrategia (BOT-045 y sucesores) se hace OFFLINE sobre datasets históricos y scripts de backtesting, sin requerir una segunda terminal MT5, y el bot productivo permanece aislado de esos experimentos. BOT-031 sigue BLOCKED de forma natural hasta disponer de otra máquina/entorno apropiado por otro motivo (ej. una PC de prueba real para el instalador) — ver "Prioridad actual de trabajo" más abajo.
 - **Dependencias:** BOT-026, BOT-027.
 
 ---
@@ -520,7 +550,7 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 Antes de implementar cualquier funcionalidad nueva importante:
 
 1. Revisar este `BACKLOG.md`.
-2. Crear o identificar el ID correspondiente (siguiente disponible: **BOT-045**).
+2. Crear o identificar el ID correspondiente (siguiente disponible: **BOT-046**).
 3. Cambiarlo a `IN PROGRESS` al comenzar.
 4. Implementar.
 5. Correr los tests correspondientes (ver los scripts `test_*.py` de cada módulo — no hay `pytest` instalado en el entorno, se corren como script plano: `python strategy/test_engine.py`, etc.).
@@ -535,3 +565,13 @@ Si durante el desarrollo aparece un bug, deuda técnica, o mejora nueva: agregar
 Toda tarea relevante de desarrollo, análisis, backtesting, debugging o investigación debe generar un reporte Markdown autocontenido dentro del repositorio. El reporte debe incluir suficiente contexto, resultados, decisiones, tests, artefactos y estado Git para ser compartido posteriormente con ChatGPT u otro colaborador sin depender de la conversación original de Claude Code.
 
 Ubicación: `docs/reports/`, con nombre descriptivo (ej. `docs/reports/BOT-042_rerun_RR_post_BOT-043.md`). El reporte se commitea junto con el resto de los cambios de la tarea — no queda solo en la respuesta del chat. Ver `docs/reports/BOT-042_rerun_RR_post_BOT-043.md` como ejemplo de referencia del nivel de detalle esperado.
+
+## Regla permanente — experimentación sobre la estrategia (desde 2026-09-15)
+
+Toda investigación futura sobre la estrategia (indicadores nuevos, filtros, cambios de parámetros) sigue este orden, sin saltarse etapas:
+
+```
+DIAGNÓSTICO → HIPÓTESIS → PRUEBA CONTROLADA → ROBUSTEZ → VALIDACIÓN → CAMBIO EN PRODUCCIÓN
+```
+
+Evitar explícitamente: "agregar varios indicadores/filtros simultáneamente y quedarse con la combinación que dé mayor beneficio" — el objetivo es minimizar overfitting y poder atribuir cualquier mejora a una causa concreta, no a la mejor combinación encontrada por fuerza bruta. BOT-045 es el primer ítem que sigue esta regla explícitamente: cubre únicamente la etapa de Diagnóstico/Hipótesis, no autoriza por sí solo pasar a Prueba controlada ni a las etapas siguientes.
