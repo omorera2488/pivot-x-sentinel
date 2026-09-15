@@ -29,7 +29,9 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 
 1. ~~**BOT-045** — Market regime / calidad de entradas~~ `DONE`. ~~**BOT-046** — Dirección/D1 + robustez temporal~~ `DONE` — recomendación: RESULTADO 2 (más historial), ver `docs/reports/BOT-046_direction_d1_temporal_robustness.md`. No se abre todavía una Prueba controlada de filtro/scoring.
 2. ~~**BOT-008** — Re-run completo del sweep~~ `DONE` — re-ejecutado con el motor corregido: ESCENARIO A marginal (edge real pero delgado, PF~1.05, dos configuraciones — `cfg_1260`/`cfg_1278` — positivas en USD en los 3 sub-períodos), ver `docs/reports/BOT-008_rerun_post_BOT043.md`. Próximo paso recomendado (no ejecutado): validación Out-of-Sample genuina sobre esas dos configuraciones, mismo criterio que `VALIDATION-D1-OOS` — no se abre automáticamente otro sweep ni se cambia producción.
-3. **BOT-032** — Kill switch / máxima pérdida (`HIGH`) — protección de capital, mejora independiente de la optimización de estrategia.
+
+   **Con BOT-008 cerrado, la línea de investigación/optimización sobre este espacio de parámetros queda CERRADA** (ver "DECISIÓN — Cierre temporal de optimización histórica" al final del archivo) — `cfg_1260`/`cfg_1278` y la hipótesis D1 quedan congeladas para `VALIDATION-CONFIG-OOS`/`VALIDATION-D1-OOS` (futuro, con datos OOS posteriores al 2026-09-15, no ejecutar todavía). El proyecto retoma la secuencia funcional/operativa ya acordada — **próxima US activa: BOT-032** (punto 3 abajo).
+3. **BOT-032** — Kill switch / máxima pérdida (`HIGH`) — protección de capital, mejora independiente de la optimización de estrategia. ← **próxima US activa**
 4. **BOT-024 + BOT-025** — Normalización y gate de scoring (`LOW`/`MEDIUM`) — evaluar su implementación ahora que se conocen los resultados de BOT-045 (factores de scoring existentes sin poder explicativo robusto salvo lo ya cubierto por BOT-046). BOT-025 sigue dependiendo de BOT-024.
 5. **BOT-033** — Alerta de noticias económicas (`MEDIUM`).
 6. **BOT-038** — Checklist de validación (`HIGH`) — revisar/redefinir considerando que el bot ya está operando en real.
@@ -127,6 +129,17 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
 - **Versión objetivo/alcanzada:** sin release asociado (resultado de barrido, no cambio de código de producto)
 - **Descripción:** El único barrido de backtest que existía (`docs/spec-backtest.md` §8, 3.780 combinaciones sobre M5 real) había corrido contra la lógica HTF **vieja** — reemplazada dos veces desde entonces: "bloque en formación" (BOT-005, 2026-08-19) y "alineado a sesión" (BOT-004, 2026-09-03). Re-ejecutado el 2026-09-15: datos frescos descargados (100.505 velas M5, `XAUUSDc`, 2025-04-14 a 2026-09-15), barrido completo (`03_run_sweep.py`) y prueba de robustez en 3 sub-períodos (`04_run_robustness.py`) — ambos corriendo ya contra `htf_session.py` (BOT-004).
 - **Notas técnicas:** `backtests/scripts/03_run_sweep.py` y `04_run_robustness.py` tenían `SYMBOL = "XAUUSDm"` hardcodeado (bróker/cuenta vieja) — corregido para usar `resolve_symbol("XAUUSD")` (mismo mecanismo que BOT-011), resuelto en runtime antes de conectar, no como constante de import. Resultados en `backtests/results/sweep_full_M5.csv`, `sweep_top20_M5.csv`, `robustness_subperiods_M5.csv` — a pedido explícito del usuario, el contenido/interpretación del resultado no se documenta ni se discute acá (ver `docs/claude-memory/pivot-x-sentinel-no-backtest-talk.md`); el ítem se cierra por haberse *ejecutado*, no por el resultado obtenido. **Actualización 2026-09-15 (BOT-043):** el motor con el que corrió este barrido tenía el bug de costos de BOT-043 (swap acreditado en vez de cobrado + precio→USD subvaluado 100x). La corrida de control de BOT-043 sobre Config A con params idénticos confirma el impacto: mismo `n_trades`/`win_rate` (2.474 / 49.37%, esos no dependen de USD), pero Net R pasa de **+588.44 a −114.22** y Profit Factor de **1.476 a 0.912** con el motor corregido — es decir, este barrido (`sweep_full_M5.csv`, `sweep_top20_M5.csv`, `robustness_subperiods_M5.csv`) está corrido con el motor viejo y sus resultados **no son confiables** para ninguna combinación con trades `nights_held>0` (la gran mayoría de las 3.780). Este ítem se mantiene DONE porque el trabajo de *ejecutarlo* está hecho y no se re-abre solo, pero cualquier decisión que dependa de sus números debe esperar un re-run explícito con el motor corregido (fuera de alcance de BOT-043, ver nota de BOT-042). **Actualización 2026-09-15 (BOT-045):** el re-run completo de este barrido (3.780 combinaciones) queda pendiente pero se recomienda ejecutarlo **después** de revisar los hallazgos de BOT-045 (análisis de régimen de mercado/calidad de entrada) — antes de volver a correr 3.780 combinaciones, conviene entender si hay variables de régimen de mercado que expliquen buena parte del comportamiento de la estrategia. Esto no cancela ni degrada la prioridad de BOT-008 (sigue CRITICAL, sus resultados siguen invalidados) — solo ordena el trabajo operativo, ver "Prioridad actual de trabajo" más abajo. **Actualización 2026-09-15 (BOT-045 completado):** BOT-045 ya está `DONE` (ver ese ítem y `docs/reports/BOT-045_market_regime_analysis.md`) — encontró evidencia consistente (dirección LONG/SHORT, alineación con tendencia D1) pero ningún filtro fue implementado, es diagnóstico puro. El re-run completo de BOT-008 sigue pendiente y puede retomarse ahora que se revisó BOT-045. **Actualización 2026-09-15 (re-run completo con motor corregido):** ejecutadas las 3.780 combinaciones originales (`backtests/scripts/10_bot008_full_sweep_rerun.py`, commit base `a0e32f6`+) — **hallazgo metodológico:** el espacio efectivamente único es 1.260, no 3.780 (`max_concurrent_por_direccion` no tiene ningún efecto mientras `una_operacion_a_la_vez=True`, el default de producción). **71/1.260 (5.6%) configuraciones únicas tienen expectancy positiva** — la gran mayoría del espacio sigue sin edge. Existe una región concreta (EMA≈14-17, HTF=200, Buffer bajo, **RR=0.5**) que pasa la mayoría de los filtros de robustez pre-definidos: MESETA en vecindad (9/11 finalistas), y **dos configuraciones específicas (`cfg_1260`: EMA=14/HTF=200/Buf=0.2/RR=0.5 y `cfg_1278`: EMA=14/HTF=200/Buf=0.7/RR=0.5) positivas en USD en los 3 sub-períodos** — aunque solo 2/3 en R (única R-3/3 de las 1.260, `cfg_2250`, resultó perdedora neta en USD — hallazgo que subraya por qué se verificaron ambas métricas). **Clasificación: ESCENARIO A marginal** — edge real pero delgado (PF~1.05), no listo para producción, requiere validación Out-of-Sample genuina antes de cualquier cambio real (mismo criterio que `VALIDATION-D1-OOS`). Ningún parámetro de producción fue modificado; ningún filtro/config nueva se implementó automáticamente. **Reporte completo (documento maestro, autocontenido):** `docs/reports/BOT-008_rerun_post_BOT043.md`.
+
+**Resumen breve del resultado válido (post-BOT-043, confirmado 2026-09-15):**
+- Sweep original: 3.780 combinaciones definidas (`docs/spec-backtest.md` §4.1, sin modificar).
+- 1.260 configuraciones efectivamente únicas (`max_concurrent_por_direccion` resultó inerte).
+- 71/1.260 (5.6%) con expectancy positiva después de costos.
+- Región favorable identificada: EMA 14–17, HTF 200, RR 0.5, Buffer bajo.
+- `cfg_1260` (EMA=14/HTF=200/Buf=0.2/RR=0.5) y `cfg_1278` (EMA=14/HTF=200/Buf=0.7/RR=0.5) quedaron como principales candidatos — únicos positivos en USD en los 3 sub-períodos.
+- Resultado clasificado como **ESCENARIO A marginal**.
+- **Ninguna configuración pasa a producción todavía.**
+- **La optimización histórica de este espacio de parámetros (EMA/HTF/Buffer/RR sobre este mismo dataset) queda CERRADA** — no se vuelve a barrer, expandir rangos, ni re-analizar sin una hipótesis nueva claramente justificada (ver "DECISIÓN — Cierre temporal de optimización histórica" al final del archivo).
+- Próxima validación de `cfg_1260`/`cfg_1278`: con datos OOS genuinos posteriores al 2026-09-15 — ver `VALIDATION-CONFIG-OOS` al final del archivo. No ejecutar todavía.
 - **Dependencias:** BOT-004, BOT-005. Ver BOT-043 (bug de costos, ya corregido — motor usado para este re-run), BOT-042 (re-run parcial ya hecho, aislado en RR) y BOT-045/BOT-046 (revisados antes del re-run completo del barrido, hipótesis congeladas, no incorporadas acá).
 
 ### BOT-009 — Motor de backtest con costos reales (implementación)
@@ -627,3 +640,82 @@ Evaluar nuevamente si:
 No ejecutar hasta disponer de una cantidad suficiente de datos posteriores al **2026-09-15** para que la validación tenga una muestra razonable.
 
 Este ticket es exclusivamente de **validación futura** y no autoriza ninguna modificación de producción.
+
+---
+
+## VALIDATION-CONFIG-OOS — Validación Out-of-Sample de candidatos BOT-008
+
+**Estado:** PENDING
+**Prioridad:** FUTURE VALIDATION
+
+### Objetivo
+
+Cuando exista suficiente histórico nuevo posterior al **2026-09-15**, validar las configuraciones candidatas congeladas por BOT-008 (`docs/reports/BOT-008_rerun_post_BOT043.md`) sin volver a optimizar parámetros.
+
+### Candidatos congelados
+
+#### cfg_1260
+- EMA = 14
+- HTF = 200
+- Buffer = 0.2
+- RR = 0.5
+
+#### cfg_1278
+- EMA = 14
+- HTF = 200
+- Buffer = 0.7
+- RR = 0.5
+
+### Regla fundamental
+
+NO modificar estos parámetros utilizando los nuevos datos.
+
+NO probar EMA intermedias.
+
+NO probar HTF adicionales.
+
+NO probar RR adicionales.
+
+NO optimizar Buffer.
+
+NO combinar todavía con D1, ADX, RSI u otros hallazgos de BOT-045/BOT-046.
+
+Los nuevos datos deben utilizarse exclusivamente para responder:
+
+> ¿El edge marginal observado por cfg_1260/cfg_1278 continúa existiendo sobre datos que nunca participaron en su selección?
+
+Evaluar como mínimo:
+
+- trades;
+- win rate;
+- PF;
+- expectancy R;
+- Net R;
+- Net USD;
+- Max Drawdown;
+- estabilidad temporal;
+- costos reales.
+
+Dado que producción utiliza lote fijo, evaluar obligatoriamente **R y USD** (ver el hallazgo de BOT-008: `cfg_2250` era la única configuración robusta en R en los 3 sub-períodos originales pero resultó perdedora neta en USD — motivo por el que esta regla es explícita acá).
+
+No considerar una configuración validada si únicamente una de las dos métricas cuenta una historia favorable.
+
+### Dependencia
+
+No ejecutar hasta disponer de una muestra OOS razonable posterior al 2026-09-15.
+
+Este ticket es exclusivamente de **validación futura** y no autoriza ninguna modificación de producción.
+
+---
+
+## DECISIÓN — Cierre temporal de optimización histórica
+
+**Fecha:** 2026-09-15
+
+A partir del cierre de BOT-008:
+
+> No continuar realizando sweeps, expansión de rangos, búsqueda de thresholds ni nuevas combinaciones sobre el mismo histórico salvo que exista una hipótesis nueva claramente justificada.
+
+Los candidatos de BOT-008 (`cfg_1260`, `cfg_1278`) y la hipótesis D1 de BOT-045/BOT-046 quedan **congelados** para validación futura (`VALIDATION-CONFIG-OOS` y `VALIDATION-D1-OOS`, ambos arriba). El proyecto vuelve ahora al backlog funcional/operativo previamente acordado — ver "Prioridad actual de trabajo" al principio de este archivo.
+
+Esto tiene como objetivo evitar *data mining* y ciclos indefinidos de análisis sobre el mismo dataset.
