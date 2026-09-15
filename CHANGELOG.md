@@ -14,6 +14,8 @@ cada `releases/vX.Y.Z/`) describe específicamente ESE artefacto instalable.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-15
+
 ### Fixed
 
 - **BOT-032** — `panel/config.html`: el monto de "Máxima pérdida diaria
