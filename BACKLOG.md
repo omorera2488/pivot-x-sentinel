@@ -104,12 +104,12 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 
 ### BOT-008 — Re-ejecutar el barrido de Fase 3 con la lógica HTF actual
 - **Categoría:** Backtest
-- **Estado:** TODO
+- **Estado:** DONE
 - **Prioridad:** CRITICAL
 - **Incorporado:** 2026-08-19 (ampliado 2026-09-03)
-- **Versión objetivo:** sin definir
-- **Descripción:** El único barrido de backtest que existe (`docs/spec-backtest.md` §8, 3.780 combinaciones sobre M5 real) corrió contra la lógica HTF **vieja** — reemplazada DOS VECES desde entonces: primero por "bloque en formación" (BOT-005, 2026-08-19) y después por "alineado a sesión" (BOT-004, 2026-09-03). El bot opera en vivo con capital real (`execution/README.md`, `docs/spec-live-execution.md`) sin que exista ningún backtest que refleje la lógica que realmente corre hoy.
-- **Notas técnicas:** El motor de backtest en sí (`/backtests`, `engine.py`) no necesita cambios — solo hay que volver a correr el barrido (`backtests/scripts/03_run_sweep.py`/`04_run_robustness.py`) con datos frescos, ya que `bucket_levels`/`htf_session.py` ya están actualizados. `backtests/` no tuvo cambios desde 2026-08-30 (solo la resolución de símbolo).
+- **Versión objetivo/alcanzada:** sin release asociado (resultado de barrido, no cambio de código de producto)
+- **Descripción:** El único barrido de backtest que existía (`docs/spec-backtest.md` §8, 3.780 combinaciones sobre M5 real) había corrido contra la lógica HTF **vieja** — reemplazada dos veces desde entonces: "bloque en formación" (BOT-005, 2026-08-19) y "alineado a sesión" (BOT-004, 2026-09-03). Re-ejecutado el 2026-09-15: datos frescos descargados (100.505 velas M5, `XAUUSDc`, 2025-04-14 a 2026-09-15), barrido completo (`03_run_sweep.py`) y prueba de robustez en 3 sub-períodos (`04_run_robustness.py`) — ambos corriendo ya contra `htf_session.py` (BOT-004).
+- **Notas técnicas:** `backtests/scripts/03_run_sweep.py` y `04_run_robustness.py` tenían `SYMBOL = "XAUUSDm"` hardcodeado (bróker/cuenta vieja) — corregido para usar `resolve_symbol("XAUUSD")` (mismo mecanismo que BOT-011), resuelto en runtime antes de conectar, no como constante de import. Resultados en `backtests/results/sweep_full_M5.csv`, `sweep_top20_M5.csv`, `robustness_subperiods_M5.csv` — a pedido explícito del usuario, el contenido/interpretación del resultado no se documenta ni se discute acá (ver `docs/claude-memory/pivot-x-sentinel-no-backtest-talk.md`); el ítem se cierra por haberse *ejecutado*, no por el resultado obtenido.
 - **Dependencias:** BOT-004, BOT-005.
 
 ### BOT-009 — Motor de backtest con costos reales (implementación)

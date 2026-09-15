@@ -22,11 +22,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))       # repo root, 
 
 from strategy.costs import BrokerCosts
 from src.sweep import grid_1m, grid_5m, run_sweep
+from execution.src.mt5_utils import resolve_symbol
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 RESULTS_DIR = Path(__file__).resolve().parents[1] / "results"
 
-SYMBOL = "XAUUSDm"
 FIXED_LOT = 0.01
 
 GRID_BY_TF = {"M1": grid_1m, "M5": grid_5m}
@@ -71,6 +71,15 @@ def main():
     if tf not in GRID_BY_TF:
         print(f"Timeframe no soportado: {tf!r} (opciones: {list(GRID_BY_TF)})")
         sys.exit(1)
+
+    # Resuelto en tiempo real contra el broker conectado (mismo mecanismo que
+    # 01_download_data.py) -- no hardcodeado a 'XAUUSDm', que ya no es el
+    # nombre real en la cuenta actual (BOT-008, docs/roadmap.md Fase 3).
+    if not mt5.initialize():
+        raise RuntimeError(f"No se pudo conectar a MT5: {mt5.last_error()}")
+    SYMBOL = resolve_symbol("XAUUSD")
+    mt5.shutdown()  # get_live_costs() y el resto reconectan solos cuando hace falta
+
     path = Path(sys.argv[2]) if len(sys.argv) > 2 else DATA_DIR / f"{SYMBOL}_{tf}_latest.parquet"
 
     bars, df = load_bars(path)

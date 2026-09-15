@@ -25,10 +25,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))       # repo root, 
 from strategy.engine import StrategyParams, run_backtest
 from strategy.costs import BrokerCosts
 from src.sweep import summarize
+from execution.src.mt5_utils import resolve_symbol
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 RESULTS_DIR = Path(__file__).resolve().parents[1] / "results"
-SYMBOL = "XAUUSDm"
 FIXED_LOT = 0.01
 PARAM_COLS = ["ema_periods", "periodos_htf_min", "buf_bp", "rr", "max_concurrent_por_direccion"]
 
@@ -51,6 +51,11 @@ def main():
     tf = sys.argv[1].upper() if len(sys.argv) > 1 else "M5"
     n_sub = int(sys.argv[2]) if len(sys.argv) > 2 else 3
     n_cand = int(sys.argv[3]) if len(sys.argv) > 3 else 3
+
+    if not mt5.initialize():
+        raise RuntimeError(f"No se pudo conectar a MT5: {mt5.last_error()}")
+    SYMBOL = resolve_symbol("XAUUSD")
+    mt5.shutdown()
 
     top_path = RESULTS_DIR / f"sweep_top20_{tf}.csv"
     top = pd.read_csv(top_path)
