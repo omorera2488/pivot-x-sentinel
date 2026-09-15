@@ -1,0 +1,8 @@
+config,rr,max_loss_streak,streak_ge3,streak_ge5,streak_ge7,streak_ge10,streak_ge15,streak_ge20,n_loss_streaks_total
+A_RR1,1.0,10,161,42,9,2,0,0,611
+A_RR2,2.0,21,206,100,44,10,1,1,446
+A_RR3,3.0,34,157,92,52,22,6,2,281
+A_RR4,4.0,33,137,87,49,24,6,1,211
+A_RR5,5.0,30,109,75,44,20,8,4,167
+A_RR7,7.0,25,85,64,47,24,5,4,123
+B_referencia_motor_corregido,3.0,16,117,61,36,11,1,0,213
