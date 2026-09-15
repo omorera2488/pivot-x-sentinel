@@ -14,6 +14,8 @@ cada `releases/vX.Y.Z/`) describe específicamente ESE artefacto instalable.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-15
+
 ### Added
 
 - **BOT-032** — Kill switch / máxima pérdida diaria: protección configurable
