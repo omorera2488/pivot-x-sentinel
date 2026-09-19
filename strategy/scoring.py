@@ -4,8 +4,14 @@
 2026-08-31 (chat del panel), 4 factores:
 
   1. Divergencia: RSI(14, close), pivotes tipo ta.pivothigh/pivotlow de
-     TradingView. +1 si la divergencia vigente apoya el sentido de la
-     entrada, -1 si lo contradice, 0 si no hay ninguna vigente.
+     TradingView. Solo divergencia REGULAR (no hidden). +1 si la divergencia
+     vigente apoya el sentido de la entrada, -1 si lo contradice, 0 si no hay
+     ninguna vigente. bullish y bearish se detectan de forma independiente;
+     si ambas estan vigentes a la vez, gana la de `confirmation_bar` mas
+     reciente (fix reports/AUDIT-RSI-DIVERGENCE.md hallazgo #1, 2026-09-19 --
+     antes bullish tenia prioridad accidental por orden de codigo); empate
+     exacto de confirmation_bar -> CONFLICT, score 0 (ver
+     resolve_divergence()).
   2. Tendencia: bucket_levels() (el mismo bloque HTF que ya usa engine.py)
      corrido con dos ventanas de minutos distintas sobre la MISMA serie de
      barras -- sin pedir otro timeframe a MT5. +1 si ambas ventanas
@@ -144,33 +150,148 @@ def _signed(direction: int, supports_direction: int, label: str) -> tuple[int, s
     return -1, f"{label} -- en contra de la entrada"
 
 
+# Fix reports/AUDIT-RSI-DIVERGENCE.md hallazgo #1 (2026-09-19): bullish y
+# bearish se detectan de forma INDEPENDIENTE (ninguna se calcula "primero" ni
+# descarta a la otra por orden de codigo) y despues se resuelven de forma
+# explicita por `confirmation_bar` -- nunca por `pivot_bar` (queremos la que
+# el bot supo CONFIRMADA mas recientemente, no la que ocurrio primero en el
+# precio) ni por la direccion del trade (LONG/SHORT se aplica DESPUES,
+# nunca decide cual divergencia se elige).
+DIVERGENCE_STATE_NONE = "NONE"
+DIVERGENCE_STATE_BULLISH = "BULLISH"
+DIVERGENCE_STATE_BEARISH = "BEARISH"
+DIVERGENCE_STATE_CONFLICT = "CONFLICT"
+
+DIVERGENCE_RESOLUTION_NA = "NONE"                        # 0 o 1 candidato vigente -- no hubo nada que resolver
+DIVERGENCE_RESOLUTION_MOST_RECENT = "MOST_RECENT"        # ambas vigentes, gano la de confirmation_bar mas reciente
+DIVERGENCE_RESOLUTION_CONFLICT = "SAME_CONFIRMATION_BAR"  # ambas vigentes, mismo confirmation_bar -- empate real
+
+
+@dataclass(frozen=True)
+class DivergenceCandidate:
+    """Divergencia regular vigente de un tipo (bullish o bearish), con el
+    detalle de los dos pivotes que la forman -- solo para trazabilidad, no
+    participa en ninguna decision nueva. Un candidato SOLO existe (no es
+    None) cuando esta vigente -- no hace falta un campo `active` separado en
+    esta clase, la ausencia (None) YA significa "inactivo"; se expone como
+    bool explicito en EntryScore (ver score_entry())."""
+    kind: str  # "bullish" | "bearish"
+    pivot_bar: int
+    confirmation_bar: int
+    age: int
+    prior_pivot_bar: int
+    prior_confirmation_bar: int
+    latest_rsi: float
+    prior_rsi: float
+    latest_price: float
+    prior_price: float
+
+
+def _bullish_candidate(close: np.ndarray, rsi_values: np.ndarray, current_bar: int, lbL: int, lbR: int,
+                        range_min: int, range_max: int, fresh_bars: int) -> DivergenceCandidate | None:
+    """alcista regular: precio hace minimo mas BAJO, RSI hace minimo mas ALTO."""
+    _, lows = find_confirmed_pivots(rsi_values[:current_bar + 1], lbL, lbR)
+    latest_low = _most_recent_fresh(lows, current_bar, fresh_bars)
+    if latest_low is None:
+        return None
+    prior_low = _prior_in_range(lows, latest_low, range_min, range_max)
+    if prior_low is None or not (close[latest_low.bar] < close[prior_low.bar] and latest_low.value > prior_low.value):
+        return None
+    return DivergenceCandidate(
+        kind="bullish", pivot_bar=latest_low.bar, confirmation_bar=latest_low.confirmed_bar,
+        age=current_bar - latest_low.confirmed_bar,
+        prior_pivot_bar=prior_low.bar, prior_confirmation_bar=prior_low.confirmed_bar,
+        latest_rsi=float(latest_low.value), prior_rsi=float(prior_low.value),
+        latest_price=float(close[latest_low.bar]), prior_price=float(close[prior_low.bar]),
+    )
+
+
+def _bearish_candidate(close: np.ndarray, rsi_values: np.ndarray, current_bar: int, lbL: int, lbR: int,
+                        range_min: int, range_max: int, fresh_bars: int) -> DivergenceCandidate | None:
+    """bajista regular: precio hace maximo mas ALTO, RSI hace maximo mas BAJO."""
+    highs, _ = find_confirmed_pivots(rsi_values[:current_bar + 1], lbL, lbR)
+    latest_high = _most_recent_fresh(highs, current_bar, fresh_bars)
+    if latest_high is None:
+        return None
+    prior_high = _prior_in_range(highs, latest_high, range_min, range_max)
+    if prior_high is None or not (close[latest_high.bar] > close[prior_high.bar] and latest_high.value < prior_high.value):
+        return None
+    return DivergenceCandidate(
+        kind="bearish", pivot_bar=latest_high.bar, confirmation_bar=latest_high.confirmed_bar,
+        age=current_bar - latest_high.confirmed_bar,
+        prior_pivot_bar=prior_high.bar, prior_confirmation_bar=prior_high.confirmed_bar,
+        latest_rsi=float(latest_high.value), prior_rsi=float(prior_high.value),
+        latest_price=float(close[latest_high.bar]), prior_price=float(close[prior_high.bar]),
+    )
+
+
+@dataclass(frozen=True)
+class DivergenceResolution:
+    """Resultado de resolver bullish vs bearish vigentes. `score`/`reason`
+    son el mismo contrato que ya devolvia divergence_score() -- ver
+    divergence_score() mas abajo (wrapper compatible) y
+    reports/AUDIT-RSI-DIVERGENCE.md (hallazgo #1) para el porque de este
+    cambio."""
+    resolved_state: str  # NONE | BULLISH | BEARISH | CONFLICT
+    resolution: str      # NONE | MOST_RECENT | SAME_CONFIRMATION_BAR
+    bullish: DivergenceCandidate | None
+    bearish: DivergenceCandidate | None
+    score: int
+    reason: str
+
+
+def resolve_divergence(direction: int, bullish: DivergenceCandidate | None,
+                        bearish: DivergenceCandidate | None) -> DivergenceResolution:
+    """Decide cual divergencia manda cuando hay mas de una vigente, usando
+    EXCLUSIVAMENTE `confirmation_bar` (nunca `pivot_bar`: nos interesa cual
+    informacion conocio el bot mas recientemente, no cual ocurrio primero en
+    el precio). Empate exacto de confirmation_bar -> CONFLICT, score 0 --
+    sin usar D1/EMA/tendencia/direccion del trade para desempatar. La
+    direccion (LONG/SHORT) se aplica DESPUES de resolver el estado, nunca
+    antes."""
+    if bullish is None and bearish is None:
+        return DivergenceResolution(DIVERGENCE_STATE_NONE, DIVERGENCE_RESOLUTION_NA, None, None,
+                                     0, "sin divergencia vigente")
+    if bearish is None:
+        score, reason = _signed(direction, +1, "divergencia alcista RSI vigente")
+        return DivergenceResolution(DIVERGENCE_STATE_BULLISH, DIVERGENCE_RESOLUTION_NA, bullish, None, score, reason)
+    if bullish is None:
+        score, reason = _signed(direction, -1, "divergencia bajista RSI vigente")
+        return DivergenceResolution(DIVERGENCE_STATE_BEARISH, DIVERGENCE_RESOLUTION_NA, None, bearish, score, reason)
+
+    # ambas vigentes -- gana la de confirmation_bar mas reciente
+    if bullish.confirmation_bar > bearish.confirmation_bar:
+        score, reason = _signed(direction, +1, "divergencia alcista RSI vigente")
+        return DivergenceResolution(DIVERGENCE_STATE_BULLISH, DIVERGENCE_RESOLUTION_MOST_RECENT, bullish, bearish, score, reason)
+    if bearish.confirmation_bar > bullish.confirmation_bar:
+        score, reason = _signed(direction, -1, "divergencia bajista RSI vigente")
+        return DivergenceResolution(DIVERGENCE_STATE_BEARISH, DIVERGENCE_RESOLUTION_MOST_RECENT, bullish, bearish, score, reason)
+    return DivergenceResolution(DIVERGENCE_STATE_CONFLICT, DIVERGENCE_RESOLUTION_CONFLICT, bullish, bearish,
+                                 0, "conflicto de divergencias RSI vigentes")
+
+
+def divergence_detail(direction: int, close: np.ndarray, rsi_values: np.ndarray, current_bar: int,
+                       lbL: int = DIVERGENCE_LB_LEFT, lbR: int = DIVERGENCE_LB_RIGHT,
+                       range_min: int = DIVERGENCE_RANGE_MIN, range_max: int = DIVERGENCE_RANGE_MAX,
+                       fresh_bars: int = DIVERGENCE_FRESH_BARS) -> DivergenceResolution:
+    """direction: -1 venta, +1 compra. current_bar: indice de la barra de la
+    señal (la ultima de close/rsi_values). Detalle completo (bullish/bearish/
+    resolved_state/resolution), usado por score_entry() para trazabilidad.
+    Ver divergence_score() para el wrapper compatible (score, reason)."""
+    bullish = _bullish_candidate(close, rsi_values, current_bar, lbL, lbR, range_min, range_max, fresh_bars)
+    bearish = _bearish_candidate(close, rsi_values, current_bar, lbL, lbR, range_min, range_max, fresh_bars)
+    return resolve_divergence(direction, bullish, bearish)
+
+
 def divergence_score(direction: int, close: np.ndarray, rsi_values: np.ndarray, current_bar: int,
                       lbL: int = DIVERGENCE_LB_LEFT, lbR: int = DIVERGENCE_LB_RIGHT,
                       range_min: int = DIVERGENCE_RANGE_MIN, range_max: int = DIVERGENCE_RANGE_MAX,
                       fresh_bars: int = DIVERGENCE_FRESH_BARS) -> tuple[int, str]:
-    """direction: -1 venta, +1 compra. current_bar: indice de la barra de la
-    señal (la ultima de close/rsi_values). Busca el pivote de RSI mas
-    reciente CONFIRMADO dentro de `fresh_bars` velas antes de current_bar, y
-    lo compara contra el pivote previo del mismo tipo dentro de
-    [range_min, range_max] velas de distancia -- divergencia regular
-    (precio y RSI en sentido opuesto)."""
-    highs, lows = find_confirmed_pivots(rsi_values[:current_bar + 1], lbL, lbR)
-
-    # alcista regular: precio hace minimo mas BAJO, RSI hace minimo mas ALTO -- apoya COMPRA
-    latest_low = _most_recent_fresh(lows, current_bar, fresh_bars)
-    if latest_low is not None:
-        prior_low = _prior_in_range(lows, latest_low, range_min, range_max)
-        if prior_low is not None and close[latest_low.bar] < close[prior_low.bar] and latest_low.value > prior_low.value:
-            return _signed(direction, +1, "divergencia alcista RSI vigente")
-
-    # bajista regular: precio hace maximo mas ALTO, RSI hace maximo mas BAJO -- apoya VENTA
-    latest_high = _most_recent_fresh(highs, current_bar, fresh_bars)
-    if latest_high is not None:
-        prior_high = _prior_in_range(highs, latest_high, range_min, range_max)
-        if prior_high is not None and close[latest_high.bar] > close[prior_high.bar] and latest_high.value < prior_high.value:
-            return _signed(direction, -1, "divergencia bajista RSI vigente")
-
-    return 0, "sin divergencia vigente"
+    """Wrapper compatible: mismo contrato (score, reason) que antes del fix
+    de reports/AUDIT-RSI-DIVERGENCE.md (hallazgo #1). Ver divergence_detail()
+    para el detalle completo (bullish/bearish/resolved_state/resolution)."""
+    detail = divergence_detail(direction, close, rsi_values, current_bar, lbL, lbR, range_min, range_max, fresh_bars)
+    return detail.score, detail.reason
 
 
 # ---- Tendencia --------------------------------------------------------------
@@ -365,6 +486,22 @@ class EntryScore:
     direction: int
     divergencia_score: int
     divergencia_reason: str
+    # Trazabilidad agregada en el fix de reports/AUDIT-RSI-DIVERGENCE.md
+    # (hallazgo #1) -- permite reconstruir despues, a partir del log/
+    # score_store, exactamente que candidato(s) y que resolucion originaron
+    # divergencia_score/_reason arriba, sin tener que recorrer de nuevo los
+    # datos de mercado. *_pivot_bar/*_confirmation_bar/*_age son None cuando
+    # el *_active correspondiente es False.
+    divergencia_resolved_state: str   # NONE | BULLISH | BEARISH | CONFLICT
+    divergencia_resolution: str       # NONE | MOST_RECENT | SAME_CONFIRMATION_BAR
+    divergencia_bullish_active: bool
+    divergencia_bullish_pivot_bar: int | None
+    divergencia_bullish_confirmation_bar: int | None
+    divergencia_bullish_age: int | None
+    divergencia_bearish_active: bool
+    divergencia_bearish_pivot_bar: int | None
+    divergencia_bearish_confirmation_bar: int | None
+    divergencia_bearish_age: int | None
     tendencia_score: int
     tendencia_reason: str
     cvp_score: int
@@ -390,7 +527,7 @@ def score_entry(direction: int, profile_name: str, entry: float, stop: float, ta
     rsi_values = rsi(close)
     current_bar = len(close) - 1
 
-    d_score, d_reason = divergence_score(direction, close, rsi_values, current_bar)
+    d_detail = divergence_detail(direction, close, rsi_values, current_bar)
 
     windows = TREND_WINDOWS_MIN.get(profile_name)
     if windows is None:
@@ -403,11 +540,21 @@ def score_entry(direction: int, profile_name: str, entry: float, stop: float, ta
 
     n_score, n_reason = node_score(entry, target, time_utc, high, low, volume, periodos_htf_min)
 
+    bullish, bearish = d_detail.bullish, d_detail.bearish
     return EntryScore(
         direction=direction,
-        divergencia_score=d_score, divergencia_reason=d_reason,
+        divergencia_score=d_detail.score, divergencia_reason=d_detail.reason,
+        divergencia_resolved_state=d_detail.resolved_state, divergencia_resolution=d_detail.resolution,
+        divergencia_bullish_active=bullish is not None,
+        divergencia_bullish_pivot_bar=bullish.pivot_bar if bullish else None,
+        divergencia_bullish_confirmation_bar=bullish.confirmation_bar if bullish else None,
+        divergencia_bullish_age=bullish.age if bullish else None,
+        divergencia_bearish_active=bearish is not None,
+        divergencia_bearish_pivot_bar=bearish.pivot_bar if bearish else None,
+        divergencia_bearish_confirmation_bar=bearish.confirmation_bar if bearish else None,
+        divergencia_bearish_age=bearish.age if bearish else None,
         tendencia_score=t_score, tendencia_reason=t_reason,
         cvp_score=c_score, cvp_reason=c_reason, cvp_margin=c_margin,
         nodo_score=n_score, nodo_reason=n_reason,
-        total=d_score + t_score + c_score + n_score,
+        total=d_detail.score + t_score + c_score + n_score,
     )

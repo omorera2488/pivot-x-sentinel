@@ -14,6 +14,44 @@ cada `releases/vX.Y.Z/`) describe específicamente ESE artefacto instalable.
 
 ## [Unreleased]
 
+### Fixed
+
+- **BOT-024** — `strategy/scoring.py`: Divergencia RSI resolvía divergencias
+  bullish/bearish simultáneas con una prioridad accidental a favor de
+  bullish (efecto secundario del orden del código: se evaluaba primero y
+  hacía `return` sin llegar a considerar una bearish vigente, aunque esta
+  fuera más reciente). Detectado en `reports/AUDIT-RSI-DIVERGENCE.md`
+  (hallazgo #1). Ahora bullish y bearish se detectan de forma independiente
+  (`_bullish_candidate()`/`_bearish_candidate()`) y se resuelven
+  explícitamente por `confirmation_bar` más reciente
+  (`resolve_divergence()`) — nunca por `pivot_bar` ni por la dirección del
+  trade. Empate exacto de `confirmation_bar` → nuevo estado `CONFLICT`
+  (`score=0`, distinguible de `NONE`/"sin divergencia vigente"). RSI
+  Wilder(14), pivotes 5/5, `DIVERGENCE_RANGE_MIN/MAX`, `DIVERGENCE_FRESH_BARS`
+  y `close[pivot_bar]` no cambiaron. `divergence_score()` mantiene su
+  contrato `(score, reason)` sin cambios (wrapper compatible); la
+  divergencia solo se REGISTRA (no decide entradas), así que este fix no
+  cambia qué opera el bot, solo lo que queda calificado/registrado.
+
+### Added
+
+- **BOT-024** — `EntryScore` (`strategy/scoring.py`) gana trazabilidad de
+  Divergencia RSI: `divergencia_resolved_state`, `divergencia_resolution`,
+  y por lado (`bullish`/`bearish`) `_active`/`_pivot_bar`/
+  `_confirmation_bar`/`_age`. Permite reconstruir después, desde
+  `score_store`, qué candidato(s) y qué resolución originaron
+  `divergencia_score`/`_reason` de una operación ya cerrada, sin recorrer de
+  nuevo los datos de mercado. Campos aditivos — `score_store.py`, `api/
+  app.py` y `panel/app.js` leen por nombre y toleran campos nuevos/ausentes,
+  sin cambios necesarios en esos consumidores.
+- **BOT-024** — `strategy/test_scoring.py`: pruebas I–P para solo-bullish,
+  solo-bearish, ninguna, ambas (bullish más reciente / bearish más
+  reciente — este último reproduce y corrige el bug de la auditoría),
+  `CONFLICT`, vigencia (edad 0..10 activa, 11 expira) y causalidad
+  (`pivot_bar`/`confirmation_bar`) sin cambios. `scripts/
+  audit_rsi_divergence.py` actualizado (secciones 9 y 11) para validar el
+  comportamiento nuevo; re-ejecutado completo: 0 fallas.
+
 ## [1.1.1] - 2026-09-15
 
 ### Fixed

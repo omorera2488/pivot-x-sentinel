@@ -1,15 +1,20 @@
 # Auditoría técnica — Divergencia RSI actual
 
-**Alcance:** auditoría de solo lectura de la implementación actual de Divergencia RSI
-(`strategy/scoring.py`). No se modificó ningún archivo de producción, ni parámetros,
-ni scoring, ni comportamiento del bot. Toda la evidencia de este reporte es
-reproducible ejecutando:
+**Alcance original (2026-09-19):** auditoría de solo lectura de la implementación
+de Divergencia RSI (`strategy/scoring.py`). No se modificó ningún archivo de
+producción, ni parámetros, ni scoring, ni comportamiento del bot. Este documento
+conserva el hallazgo original tal como se encontró — ver **sección H** para el
+fix aplicado después, bajo BOT-024.
+
+Toda la evidencia de este reporte (antes y después del fix) es reproducible
+ejecutando:
 
 ```bash
 .venv/Scripts/python.exe scripts/audit_rsi_divergence.py
 ```
 
-Log completo de la corrida (27 checks, 0 fallas, 7 advertencias):
+Log completo de la corrida más reciente (0 fallas, 6 advertencias, incluye la
+verificación del fix de la sección H):
 `reports/RSI-DIVERGENCE-EVIDENCE.log`.
 
 ---
@@ -90,7 +95,7 @@ misma fórmula — no son errores de tipeo en las constantes.
 | Separación | **PASS** (fórmula correcta) (+ 1 WARNING: rango mínimo inalcanzable) |
 | Vigencia | **PASS** (+ 1 WARNING: ambigüedad de nomenclatura 10 vs 11 barras) |
 | LONG/SHORT | **PASS** |
-| Divergencias simultáneas | **WARNING** (prioridad fija no documentada, bajista se descarta en silencio) |
+| Divergencias simultáneas | ~~**WARNING** (prioridad fija no documentada, bajista se descarta en silencio)~~ → **RESOLVED** (BOT-024, ver sección H): resolución explícita por `confirmation_bar` más reciente + estado `CONFLICT` |
 | Batch/live parity | **PASS** (738/738 comparaciones idénticas) |
 | LIMIT-time parity | **PASS** |
 
@@ -144,7 +149,8 @@ Script de auditoría: [`scripts/audit_rsi_divergence.py`](../scripts/audit_rsi_d
 (nuevo, solo lectura, no toca producción). Log completo:
 [`reports/RSI-DIVERGENCE-EVIDENCE.log`](RSI-DIVERGENCE-EVIDENCE.log).
 
-Resumen de lo ejecutado (27 checks PASS/FAIL + 7 WARN):
+Resumen de lo ejecutado (58 checks PASS + 6 WARN, 0 FAIL — incluye las
+verificaciones agregadas en el fix BOT-024, sección H):
 
 1. **RSI Wilder** — verificado contra una segunda implementación de Wilder
    escrita de forma independiente (acumuladores explícitos, sin reusar código
@@ -175,11 +181,14 @@ Resumen de lo ejecutado (27 checks PASS/FAIL + 7 WARN):
    EXPIRADA.
 7. **LONG/SHORT** — tabla 2×2 (bullish/bearish × LONG/SHORT) ejecutada
    directamente: coincide exactamente con la tabla esperada.
-8. **Divergencias simultáneas** — se construyó un caso con una divergencia
-   alcista (confirmada en 105) y una bajista (confirmada en 106, más
-   reciente) ambas vigentes en `current_bar=106`; el resultado para
-   `direction=-1` (SHORT) dio `-1` ("en contra") en vez de `+1`, porque el
-   código nunca llegó a evaluar la divergencia bajista.
+8. **Divergencias simultáneas** — hallazgo original (2026-09-19): se
+   construyó un caso con una divergencia alcista (confirmada en 105) y una
+   bajista (confirmada en 106, más reciente) ambas vigentes en
+   `current_bar=106`; el resultado para `direction=-1` (SHORT) dio `-1`
+   ("en contra") en vez de `+1`, porque el código nunca llegó a evaluar la
+   divergencia bajista. **RESUELTO en BOT-024 (sección H): el mismo caso
+   ahora resuelve `BEARISH`/`MOST_RECENT` y SHORT da `+1`** — este es
+   exactamente el caso que reproduce `strategy/test_scoring.py::test_m_*`.
 9. **Casos borde** — historial insuficiente para RSI, insuficiente para
    pivotes, primer pivote sin previo, precios iguales, RSI iguales, tercer
    pivote más reciente reemplazando al segundo, NaN aislado en el RSI: los 9
@@ -199,6 +208,10 @@ Resumen de lo ejecutado (27 checks PASS/FAIL + 7 WARN):
 ## F. Hallazgos
 
 ### 1. Prioridad fija y no documentada entre divergencia alcista y bajista simultáneas — **HIGH**
+
+> **Estado: RESOLVED (BOT-024, 2026-09-19).** Ver sección H para el fix
+> aplicado. El hallazgo original queda tal cual se documentó, sin editar,
+> como registro histórico.
 
 **Qué ocurre:** si en la misma barra hay una divergencia alcista vigente
 (pivotes bajos) *y* una divergencia bajista vigente (pivotes altos) —
@@ -360,12 +373,15 @@ precio de cierre idéntico, algo muy infrecuente en XAUUSD/FX reales.
 
 ## G. Recomendaciones (NO implementadas — solo quedan documentadas)
 
-1. **Decidir y documentar explícitamente** qué hacer cuando hay una
+1. ~~**Decidir y documentar explícitamente** qué hacer cuando hay una
    divergencia alcista y una bajista vigentes simultáneamente (hallazgo #1):
    ¿prioridad por recencia (`confirmed_bar` más alto gana)?, ¿se anulan entre
    sí (0)?, ¿se mantiene la prioridad fija actual pero documentada y testeada
    como tal? Cualquiera de las tres es razonable — lo que falta es que sea
-   una decisión consciente, no un efecto colateral del orden del código.
+   una decisión consciente, no un efecto colateral del orden del código.~~
+   **DONE (BOT-024, 2026-09-19)** — ver sección H: se implementó
+   "prioridad por recencia" (`confirmation_bar` más alto gana), con
+   `CONFLICT` explícito para el empate exacto.
 2. **Confirmar con el usuario los parámetros reales** de su indicador
    "Divergence" en TradingView (Pivot Lookback Left/Right, Range Min/Max, y
    sobre todo qué precio usa cada lado: close/low/high) antes de asumir
@@ -380,15 +396,95 @@ precio de cierre idéntico, algo muy infrecuente en XAUUSD/FX reales.
 5. **Aclarar en el docstring** si "vigencia 10 barras" significa 10 o 11
    barras activas en total (hallazgo #4), y alinear la constante/comentario
    con esa definición.
-6. **Agregar trazabilidad** al registrar el score (hallazgo #5): guardar
+6. ~~**Agregar trazabilidad** al registrar el score (hallazgo #5): guardar
    `pivot_bar`, `confirmation_bar` y edad de la divergencia junto al score en
    `score_store`, para poder reconstruir después qué pivotes concretos
    originaron cada calificación sin tener que recorrer de nuevo los datos de
-   mercado.
+   mercado.~~ **DONE (BOT-024, 2026-09-19)** — ver sección H. Sigue sin
+   haber una fila persistida de "evento de nacimiento" (se recalcula en
+   cada barra), eso queda deliberadamente igual.
 7. **Verificar en vivo contra TradingView** (cuando haya oportunidad de
    comparar el chart real) los dos casos marcados como pendientes: manejo de
    empates en pivotes (hallazgo #6) y el valor de RSI en tramos de precio
    perfectamente plano (hallazgo #7).
+
+---
+
+## H. Fix aplicado — BOT-024 (2026-09-19)
+
+**Hallazgo original:** bullish tenía prioridad accidental sobre bearish
+cuando ambas divergencias estaban vigentes a la vez, por simple orden del
+código (`if bullish: return ...` se evaluaba antes que el bloque bearish).
+
+**Fix:** resolución explícita por `confirmation_bar`. Bullish y bearish se
+detectan de forma completamente independiente (`_bullish_candidate()`,
+`_bearish_candidate()`); después, `resolve_divergence()` decide cuál manda
+usando **exclusivamente** `confirmation_bar` (nunca `pivot_bar`, nunca la
+dirección del trade):
+
+- 0 candidatos vigentes → `NONE`, score 0.
+- 1 candidato vigente → gana ese (`BULLISH` o `BEARISH`).
+- 2 candidatos vigentes, `confirmation_bar` distinto → gana el más reciente
+  (`MOST_RECENT`).
+- 2 candidatos vigentes, `confirmation_bar` **igual** → `CONFLICT`, score 0
+  (distinto de `NONE`: hay información válida de ambos lados, pero ninguno
+  se favorece).
+
+La dirección (LONG/SHORT) se aplica **después** de resolver el estado, nunca
+antes — la tabla LONG/SHORT (`BULLISH+LONG=+1`, `BULLISH+SHORT=-1`,
+`BEARISH+LONG=-1`, `BEARISH+SHORT=+1`, `NONE`/`CONFLICT`=0) no cambió.
+
+`divergence_score()` se mantuvo como wrapper compatible — misma firma
+posicional, mismo contrato `(score, reason)` — para no romper
+`strategy/test_scoring.py` ni `scripts/audit_rsi_divergence.py`, que lo
+llaman posicionalmente. El detalle completo (candidatos + resolución) vive
+en la nueva `divergence_detail()`, usada por `score_entry()` para volcar
+trazabilidad a `EntryScore`: `divergencia_resolved_state`,
+`divergencia_resolution`, y por lado (`bullish`/`bearish`)
+`_active`/`_pivot_bar`/`_confirmation_bar`/`_age`. Son campos aditivos —
+`score_store.py`, `api/app.py` y `panel/app.js` leen por nombre y toleran
+campos nuevos, sin cambios necesarios en esos consumidores (verificado por
+inspección de cada uno antes de tocar el dataclass).
+
+**Estado posterior: RESOLVED.**
+
+**No tocado (deliberadamente, alcance de BOT-024):**
+
+- `close` como fuente de precio (vs `low`/`high`) — sigue pendiente,
+  hallazgo #2.
+- Hidden divergence — no implementada, no se pidió.
+- D1, Momentum, EMA200 como desempate — no se usan en ningún punto de la
+  resolución (`resolve_divergence()` sólo mira `confirmation_bar`).
+- Evaluación predictiva de Divergencia RSI, optimización de parámetros — no
+  forman parte de esta auditoría/fix.
+
+**Definiciones para referencia futura (sin ambigüedad):**
+
+```text
+Divergencia soportada: REGULAR unicamente (no hidden).
+
+Vigencia: age 0..10 inclusive vigente (11 valores de edad posibles,
+          contando la barra de confirmacion como age=0). Expira en age 11.
+
+Separacion nominal:  5..60 barras (DIVERGENCE_RANGE_MIN/MAX).
+Separacion efectiva: 6..60 barras con pivotes 5/5 (ver hallazgo #3 -- ningun
+                      par de pivotes reales puede estar a menos de 6 barras
+                      quando lbL=lbR=5; no cambio con este fix).
+
+Fuente de precio: close[pivot_bar] (no confirmation_bar, no high/low).
+
+CONFLICT: bullish y bearish vigentes con el MISMO confirmation_bar.
+          score = 0, resolution = SAME_CONFIRMATION_BAR, reason =
+          "conflicto de divergencias RSI vigentes" (distinto de
+          "sin divergencia vigente").
+```
+
+**Evidencia:** `reports/RSI-DIVERGENCE-EVIDENCE.log` sección 11 (casos
+`bearish más reciente` — reproduce y corrige el bug original —, `bullish más
+reciente`, y `CONFLICT`) y sección 9 (trazabilidad). Tests unitarios
+correspondientes: `strategy/test_scoring.py` I–P (en particular **M**,
+que reproduce exactamente el bug de la auditoría y demuestra que quedó
+corregido).
 
 ---
 
@@ -406,13 +502,15 @@ batch-vs-secuencial idénticas, y el caso explícito de "LIMIT creado antes de
 que el segundo pivote se confirme" da 0 en las 4 barras donde debe dar 0), y
 la tabla LONG/SHORT coincide exactamente con lo esperado.
 
-**No, en el sentido de que hay una laguna de diseño real:** cuando existen
-divergencias alcista y bajista vigentes al mismo tiempo, el código siempre
-reporta la alcista y descarta la bajista en silencio, sin que eso sea una
-decisión documentada (hallazgo #1). Y hay dos puntos de fidelidad al
-indicador de referencia de TradingView que quedan **pendientes de
-confirmación en vivo** porque este entorno no tiene acceso al chart real del
-usuario (uso de `close` vs `low`/`high`, y manejo de empates en pivotes).
+**La laguna de diseño detectada originalmente ya está resuelta (BOT-024, ver
+sección H):** cuando existen divergencias alcista y bajista vigentes al
+mismo tiempo, el código ahora resuelve explícitamente por `confirmation_bar`
+más reciente, con un estado `CONFLICT` distinguible para el empate exacto —
+ya no hay prioridad fija ni descarte silencioso. Quedan pendientes, sin
+cambios por este fix, dos puntos de fidelidad al indicador de referencia de
+TradingView que requieren **confirmación en vivo** porque este entorno no
+tiene acceso al chart real del usuario (uso de `close` vs `low`/`high`, y
+manejo de empates en pivotes) — ver hallazgos #2 y #6.
 
 No se evaluó ni se opina aquí sobre si Divergencia RSI aporta valor
 predictivo, ni sobre su interacción con Momentum o D1 — eso queda,

@@ -16,7 +16,10 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, para "import strategy"
 
 from strategy.scoring import (
-    cvp_score, divergence_score, find_confirmed_pivots, node_score, rsi, trend_score,
+    DIVERGENCE_RESOLUTION_CONFLICT, DIVERGENCE_RESOLUTION_MOST_RECENT, DIVERGENCE_RESOLUTION_NA,
+    DIVERGENCE_STATE_BEARISH, DIVERGENCE_STATE_BULLISH, DIVERGENCE_STATE_CONFLICT, DIVERGENCE_STATE_NONE,
+    DivergenceCandidate, cvp_score, divergence_detail, divergence_score, find_confirmed_pivots, node_score,
+    resolve_divergence, rsi, trend_score,
 )
 
 
@@ -81,6 +84,159 @@ def test_d_divergence_none():
     score, reason = divergence_score(+1, close, rsi_vals, 9, lbL=1, lbR=1, range_min=2, range_max=10, fresh_bars=3)
     assert score == 0 and "sin divergencia" in reason, f"se esperaba 0/sin divergencia, dio {score}/{reason}"
     print("  D) sin pivotes -> sin divergencia (0): OK")
+
+
+# ---- Fix reports/AUDIT-RSI-DIVERGENCE.md hallazgo #1 (2026-09-19): bullish -----
+# ---- y bearish se detectan independientemente y se resuelven por --------------
+# ---- confirmation_bar mas reciente (nunca prioridad fija por orden de codigo) -
+
+def _bullish_series(n, prior_bar, prior_rsi, prior_close, latest_bar, latest_rsi, latest_close):
+    rsi_vals = np.full(n, 50.0)
+    close = np.full(n, 100.0)
+    rsi_vals[prior_bar], close[prior_bar] = prior_rsi, prior_close
+    rsi_vals[latest_bar], close[latest_bar] = latest_rsi, latest_close
+    return rsi_vals, close
+
+
+def test_i_divergence_only_bullish():
+    # unico candidato vigente es bullish (prior bar=60 RSI=20, latest bar=100
+    # RSI=30 -- HL) con precio LL (95->90) -- pivotes 5/5 default,
+    # confirmation_bar=105.
+    rsi_vals, close = _bullish_series(160, 60, 20.0, 95.0, 100, 30.0, 90.0)
+    current_bar = 105  # recien confirmado
+    score_long, reason_long = divergence_score(+1, close, rsi_vals, current_bar)
+    score_short, reason_short = divergence_score(-1, close, rsi_vals, current_bar)
+    assert score_long == 1 and "alcista" in reason_long and "a favor" in reason_long
+    assert score_short == -1 and "en contra" in reason_short
+    detail = divergence_detail(+1, close, rsi_vals, current_bar)
+    assert detail.resolved_state == DIVERGENCE_STATE_BULLISH and detail.resolution == DIVERGENCE_RESOLUTION_NA
+    assert detail.bearish is None and detail.bullish is not None
+    print("  I) solo bullish vigente -> BULLISH, LONG=+1/SHORT=-1: OK")
+
+
+def test_j_divergence_only_bearish():
+    # unico candidato vigente es bearish (prior bar=60 RSI=80, latest bar=100
+    # RSI=70 -- LH) con precio HH (100->110) -- confirmation_bar=105.
+    rsi_vals = np.full(160, 50.0)
+    close = np.full(160, 100.0)
+    rsi_vals[60], close[60] = 80.0, 100.0
+    rsi_vals[100], close[100] = 70.0, 110.0
+    current_bar = 105
+    score_long, reason_long = divergence_score(+1, close, rsi_vals, current_bar)
+    score_short, reason_short = divergence_score(-1, close, rsi_vals, current_bar)
+    assert score_long == -1 and "en contra" in reason_long
+    assert score_short == 1 and "bajista" in reason_short and "a favor" in reason_short
+    detail = divergence_detail(+1, close, rsi_vals, current_bar)
+    assert detail.resolved_state == DIVERGENCE_STATE_BEARISH and detail.resolution == DIVERGENCE_RESOLUTION_NA
+    assert detail.bullish is None and detail.bearish is not None
+    print("  J) solo bearish vigente -> BEARISH, LONG=-1/SHORT=+1: OK")
+
+
+def test_k_divergence_none_resolved_state():
+    rsi_vals = np.full(160, 50.0)
+    close = np.full(160, 100.0)
+    detail = divergence_detail(+1, close, rsi_vals, 105)
+    assert detail.score == 0 and detail.resolved_state == DIVERGENCE_STATE_NONE
+    assert detail.resolution == DIVERGENCE_RESOLUTION_NA
+    assert detail.bullish is None and detail.bearish is None
+    print("  K) sin ningun candidato vigente -> resolved_state=NONE: OK")
+
+
+def test_l_divergence_both_bullish_more_recent():
+    # bullish: prior=60(RSI20) latest=105(RSI30) -> confirmation_bar=110
+    # bearish: prior=50(RSI80) latest=103(RSI70) -> confirmation_bar=108
+    # bullish es la MAS RECIENTE (110 > 108) -> debe ganar.
+    n = 160
+    rsi_vals = np.full(n, 50.0)
+    close = np.full(n, 100.0)
+    rsi_vals[60], close[60] = 20.0, 95.0
+    rsi_vals[105], close[105] = 30.0, 90.0   # bullish LL+HL
+    rsi_vals[50], close[50] = 80.0, 100.0
+    rsi_vals[103], close[103] = 70.0, 110.0  # bearish HH+LH
+    current_bar = 111  # bullish age=1, bearish age=3 -- ambas frescas
+    detail = divergence_detail(+1, close, rsi_vals, current_bar)
+    assert detail.bullish is not None and detail.bearish is not None, "el caso debe tener ambos candidatos vigentes"
+    assert detail.bullish.confirmation_bar == 110 and detail.bearish.confirmation_bar == 108
+    assert detail.resolved_state == DIVERGENCE_STATE_BULLISH and detail.resolution == DIVERGENCE_RESOLUTION_MOST_RECENT
+    score_long, _ = divergence_score(+1, close, rsi_vals, current_bar)
+    score_short, _ = divergence_score(-1, close, rsi_vals, current_bar)
+    assert score_long == 1 and score_short == -1
+    print("  L) ambas vigentes, bullish mas reciente (110>108) -> BULLISH/MOST_RECENT: OK")
+
+
+def test_m_divergence_both_bearish_more_recent():
+    # Reproduce EXACTAMENTE el bug de la auditoria (hallazgo #1): bullish
+    # confirmation_bar=105, bearish confirmation_bar=106 (MAS reciente).
+    # Antes del fix, bullish ganaba siempre por orden de codigo (SHORT daba
+    # -1). Ahora debe ganar bearish (SHORT debe dar +1).
+    n = 160
+    rsi_vals = np.full(n, 50.0)
+    close = np.full(n, 100.0)
+    rsi_vals[60], close[60] = 20.0, 95.0
+    rsi_vals[100], close[100] = 30.0, 90.0   # bullish LL+HL, confirmation_bar=105
+    rsi_vals[61], close[61] = 80.0, 100.0
+    rsi_vals[101], close[101] = 70.0, 110.0  # bearish HH+LH, confirmation_bar=106
+    current_bar = 106  # bullish age=1, bearish age=0 -- ambas vigentes
+    detail = divergence_detail(-1, close, rsi_vals, current_bar)
+    assert detail.bullish.confirmation_bar == 105 and detail.bearish.confirmation_bar == 106
+    assert detail.resolved_state == DIVERGENCE_STATE_BEARISH and detail.resolution == DIVERGENCE_RESOLUTION_MOST_RECENT
+
+    score_short, reason_short = divergence_score(-1, close, rsi_vals, current_bar)
+    assert score_short == 1, f"BUG DE LA AUDITORIA REGRESO: SHORT deberia dar +1 (bearish mas reciente), dio {score_short}"
+    assert "bajista" in reason_short and "a favor" in reason_short
+
+    score_long, reason_long = divergence_score(+1, close, rsi_vals, current_bar)
+    assert score_long == -1 and "bajista" in reason_long and "en contra" in reason_long
+    print("  M) ambas vigentes, bearish mas reciente (106>105) -> BEARISH/MOST_RECENT (bug de la auditoria corregido): OK")
+
+
+def test_n_divergence_conflict_same_confirmation_bar():
+    # CONFLICT solo puede probarse con candidatos sinteticos: con lbL/lbR
+    # fijos e iguales para ambos lados, un mismo bar no puede ser a la vez
+    # maximo y minimo estricto de RSI -- por eso se prueba resolve_divergence()
+    # directamente en vez de armar una serie de precio real (ver
+    # reports/AUDIT-RSI-DIVERGENCE.md, seccion de tests obligatorios #F).
+    bullish = DivergenceCandidate(kind="bullish", pivot_bar=100, confirmation_bar=105, age=0,
+                                   prior_pivot_bar=60, prior_confirmation_bar=65,
+                                   latest_rsi=30.0, prior_rsi=20.0, latest_price=90.0, prior_price=95.0)
+    bearish = DivergenceCandidate(kind="bearish", pivot_bar=100, confirmation_bar=105, age=0,
+                                   prior_pivot_bar=61, prior_confirmation_bar=66,
+                                   latest_rsi=70.0, prior_rsi=80.0, latest_price=110.0, prior_price=100.0)
+
+    res_long = resolve_divergence(+1, bullish, bearish)
+    res_short = resolve_divergence(-1, bullish, bearish)
+    for res in (res_long, res_short):
+        assert res.resolved_state == DIVERGENCE_STATE_CONFLICT
+        assert res.resolution == DIVERGENCE_RESOLUTION_CONFLICT
+        assert res.score == 0 and "conflicto" in res.reason
+    print("  N) empate exacto de confirmation_bar -> CONFLICT, score=0 (LONG y SHORT): OK")
+
+
+def test_o_divergence_validity_unchanged():
+    # La resolucion no debe alterar la vigencia: edad 0..10 activa, 11 expirada
+    # (mismo comportamiento que antes del fix, ver reports/AUDIT-RSI-DIVERGENCE.md).
+    rsi_vals, close = _bullish_series(160, 60, 20.0, 95.0, 100, 30.0, 90.0)  # confirmation_bar=105
+    for current_bar in range(100, 105):
+        score, _ = divergence_score(+1, close, rsi_vals, current_bar)
+        assert score == 0, f"bar={current_bar} deberia ser NO CONOCIDA (0), dio {score}"
+    for current_bar in range(105, 116):
+        score, _ = divergence_score(+1, close, rsi_vals, current_bar)
+        assert score == 1, f"bar={current_bar} deberia seguir ACTIVA (+1), dio {score}"
+    score_expired, _ = divergence_score(+1, close, rsi_vals, 116)
+    assert score_expired == 0, f"bar=116 deberia estar EXPIRADA (0), dio {score_expired}"
+    print("  O) vigencia sin cambios: activa barras 105..115 (edad 0..10), expira en 116: OK")
+
+
+def test_p_divergence_causality_unchanged():
+    # Causalidad sin cambios: un LIMIT en 101..104 no puede usar el pivote
+    # confirmado recien en 105 (mismo escenario que reports/AUDIT-RSI-DIVERGENCE.md).
+    rsi_vals, close = _bullish_series(160, 60, 20.0, 95.0, 100, 30.0, 90.0)
+    for limit_bar in range(101, 105):
+        score, reason = divergence_score(+1, close[:limit_bar + 1], rsi_vals[:limit_bar + 1], limit_bar)
+        assert score == 0 and "sin divergencia" in reason, f"LIMIT en {limit_bar} no deberia ver el pivote aun, dio {score}/{reason}"
+    score_105, _ = divergence_score(+1, close[:106], rsi_vals[:106], 105)
+    assert score_105 == 1, f"LIMIT en 105 deberia ver el pivote recien confirmado, dio {score_105}"
+    print("  P) causalidad sin cambios: LIMIT 101-104 -> 0, LIMIT 105 -> divergencia disponible: OK")
 
 
 def _rising_bars(n, high0=100.0, low0=90.0):
@@ -177,6 +333,14 @@ if __name__ == "__main__":
     test_b_confirmed_pivots()
     test_c_divergence_bullish_and_bearish()
     test_d_divergence_none()
+    test_i_divergence_only_bullish()
+    test_j_divergence_only_bearish()
+    test_k_divergence_none_resolved_state()
+    test_l_divergence_both_bullish_more_recent()
+    test_m_divergence_both_bearish_more_recent()
+    test_n_divergence_conflict_same_confirmation_bar()
+    test_o_divergence_validity_unchanged()
+    test_p_divergence_causality_unchanged()
     test_e_trend_agreement()
     test_f_trend_insufficient_history()
     test_g_cvp_margin()

@@ -23,9 +23,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root
 
 from strategy.scoring import (
     DIVERGENCE_FRESH_BARS, DIVERGENCE_LB_LEFT, DIVERGENCE_LB_RIGHT,
-    DIVERGENCE_RANGE_MAX, DIVERGENCE_RANGE_MIN, RSI_PERIOD,
-    Pivot, _most_recent_fresh, _prior_in_range, divergence_score,
-    find_confirmed_pivots, rsi,
+    DIVERGENCE_RANGE_MAX, DIVERGENCE_RANGE_MIN, DIVERGENCE_RESOLUTION_CONFLICT,
+    DIVERGENCE_RESOLUTION_MOST_RECENT, DIVERGENCE_STATE_BEARISH, DIVERGENCE_STATE_BULLISH,
+    DIVERGENCE_STATE_CONFLICT, RSI_PERIOD,
+    DivergenceCandidate, Pivot, _most_recent_fresh, _prior_in_range, divergence_detail,
+    divergence_score, find_confirmed_pivots, resolve_divergence, rsi,
 )
 
 FAILURES: list[str] = []
@@ -280,10 +282,13 @@ def audit_price_pivot_association() -> None:
           f"close[15]={close[15]}, close[25]={close[25]} (patron opuesto) -> score={score}, reason={reason!r}")
 
     import inspect
-    src = inspect.getsource(divergence_score)
-    check("divergence_score referencia unicamente el array 'close' (no 'high'/'low') para el precio del pivote",
+    from strategy.scoring import _bearish_candidate, _bullish_candidate
+    src = inspect.getsource(_bullish_candidate) + inspect.getsource(_bearish_candidate)
+    check("la deteccion de candidatos (bullish/bearish) referencia unicamente el array 'close' "
+          "(no 'high'/'low') para el precio del pivote -- logica sin cambios tras el fix, solo se movio "
+          "de divergence_score() a _bullish_candidate()/_bearish_candidate()",
           "high[" not in src and "low[" not in src and "close[" in src,
-          "grep del cuerpo de la funcion: no aparecen indexaciones high[..]/low[..], solo close[..]")
+          "grep del cuerpo de ambas funciones: no aparecen indexaciones high[..]/low[..], solo close[..]")
     warn("uso de 'close' para ambos lados de la divergencia (bullish y bearish)",
          "El indicador publico de referencia 'Divergence Indicator' de TradingView mas difundido (y varias "
          "reimplementaciones conocidas) compara 'low' para divergencias alcistas y 'high' para bajistas, no 'close' "
@@ -414,16 +419,31 @@ def audit_event_vs_state() -> None:
     import dataclasses
     from strategy.scoring import EntryScore
     fields = {f.name for f in dataclasses.fields(EntryScore)}
-    check("EntryScore no expone 'divergencia_age' ni 'divergencia_detected_at' -- solo score+reason (texto libre)",
-          "divergencia_age" not in fields and "divergencia_detected_at" not in fields,
-          f"campos de EntryScore relacionados a divergencia: {[f for f in fields if 'diverg' in f]}")
+    traceability_fields = {
+        "divergencia_resolved_state", "divergencia_resolution",
+        "divergencia_bullish_active", "divergencia_bullish_pivot_bar",
+        "divergencia_bullish_confirmation_bar", "divergencia_bullish_age",
+        "divergencia_bearish_active", "divergencia_bearish_pivot_bar",
+        "divergencia_bearish_confirmation_bar", "divergencia_bearish_age",
+    }
+    check("RESUELTO (fix reports/AUDIT-RSI-DIVERGENCE.md hallazgo #5): EntryScore ahora expone "
+          "pivot_bar/confirmation_bar/age de cada lado (bullish/bearish) + resolved_state/resolution",
+          traceability_fields <= fields,
+          f"campos de EntryScore relacionados a divergencia: {sorted(f for f in fields if 'diverg' in f)}")
 
-    warn("no hay estado persistido de 'detected_at' -- cada llamada recalcula desde cero sobre el historial",
-         "divergence_score() es una funcion pura sin memoria entre llamadas: en cada barra nueva vuelve a buscar "
-         "TODOS los pivotes confirmados y decide de nuevo. Esto es correcto para evitar drift entre corridas, pero "
-         "significa que ni el reason ni el EntryScore.to_dict() (lo unico que persiste score_store.py) permiten "
-         "reconstruir despues, a partir del log, la edad exacta o el pivot_bar/confirmation_bar que origino el "
-         "score en una operacion ya cerrada -- gap de trazabilidad, no de correctitud.")
+    detail = divergence_detail(+1, close_full, rsi_full, 108)
+    check("la trazabilidad permite reconstruir pivot_bar/confirmation_bar/age sin recorrer de nuevo los datos de mercado",
+          detail.bullish is not None and detail.bullish.pivot_bar == 100 and detail.bullish.confirmation_bar == 105
+          and detail.bullish.age == 3,
+          f"detail.bullish={detail.bullish}")
+
+    warn("sigue sin haber estado PERSISTIDO de 'detected_at' entre llamadas -- cada llamada recalcula desde cero",
+         "divergence_detail()/divergence_score() siguen siendo funciones puras sin memoria entre llamadas (se "
+         "mantuvo intencionalmente esa propiedad, ver reports/AUDIT-RSI-DIVERGENCE.md seccion de recomendaciones "
+         "#6). Ya no es un gap de trazabilidad -- score_entry() ahora vuelca pivot_bar/confirmation_bar/age de cada "
+         "candidato a EntryScore en cada llamada -- pero sigue sin haber una unica fila 'nace aqui' persistida: si "
+         "una divergencia dura 5 barras, se recalculan y registran 5 veces (una por score_entry) con la misma edad "
+         "creciente, no una sola vez con un evento de nacimiento.")
 
 
 # ---------------------------------------------------------------------------
@@ -462,18 +482,19 @@ def audit_long_short() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 11. Divergencias simultaneas / opuestas -- prioridad
+# 11. Divergencias simultaneas / opuestas -- resolucion explicita por
+#     confirmation_bar (fix reports/AUDIT-RSI-DIVERGENCE.md hallazgo #1)
 # ---------------------------------------------------------------------------
 
 def audit_simultaneous_divergences() -> None:
-    section("11. Divergencias simultaneas/opuestas -- prioridad")
+    section("11. Divergencias simultaneas/opuestas -- resolucion por confirmation_bar")
 
     n = 160
     rsi_vals = np.full(n, 50.0)
     # bullish: lows en 60 (RSI=20) y 100 (RSI=30, mas alto) -> confirmed_bar=105
     rsi_vals[60] = 20.0
     rsi_vals[100] = 30.0
-    # bearish: highs en 65 (RSI=80) y 101 (RSI=70, mas bajo) -> confirmed_bar=106, tambien fresco en t=106..
+    # bearish: highs en 65 (RSI=80) y 101 (RSI=70, mas bajo) -> confirmed_bar=106, MAS RECIENTE que la bullish
     rsi_vals[65] = 80.0
     rsi_vals[101] = 70.0
 
@@ -484,23 +505,64 @@ def audit_simultaneous_divergences() -> None:
     close[101] = 110.0  # HH en precio (110>100), LH en RSI (70<80) -> bajista OK
 
     current_bar = 106  # ambos pivotes confirmados y frescos (bullish edad=1, bearish edad=0)
+    detail_long = divergence_detail(+1, close, rsi_vals, current_bar)
     score_long, reason_long = divergence_score(+1, close, rsi_vals, current_bar)
     score_short, reason_short = divergence_score(-1, close, rsi_vals, current_bar)
-    print(f"current_bar={current_bar}: ambas divergencias (bullish confirmed_bar=105, bearish confirmed_bar=106) vigentes")
+    print(f"current_bar={current_bar}: ambas divergencias vigentes "
+          f"(bullish confirmation_bar={detail_long.bullish.confirmation_bar}, "
+          f"bearish confirmation_bar={detail_long.bearish.confirmation_bar}, bearish es la MAS RECIENTE)")
+    print(f"  resolved_state={detail_long.resolved_state}  resolution={detail_long.resolution}")
     print(f"  direction=+1 (LONG)  -> score={score_long:+d}  reason={reason_long!r}")
     print(f"  direction=-1 (SHORT) -> score={score_short:+d}  reason={reason_short!r}")
 
-    check("con bullish Y bearish vigentes simultaneamente, el codigo SIEMPRE resuelve a favor del bullish "
-          "(prioridad fija por orden de chequeo en el codigo, no por recencia ni por ningun criterio explicito)",
-          "alcista" in reason_long and "alcista" in reason_short,
-          f"reason_long={reason_long!r}, reason_short={reason_short!r} -- ambas mencionan 'alcista' pese a que "
-          f"la bearish es la MAS RECIENTE (confirmed_bar=106 vs 105) y tambien esta vigente")
+    check("RESUELTO (fix hallazgo #1): con bullish Y bearish vigentes, gana la de confirmation_bar MAS RECIENTE "
+          "(bearish=106 > bullish=105), ya no hay prioridad fija a favor de bullish",
+          detail_long.resolved_state == DIVERGENCE_STATE_BEARISH and detail_long.resolution == DIVERGENCE_RESOLUTION_MOST_RECENT,
+          f"resolved_state={detail_long.resolved_state}, resolution={detail_long.resolution}")
 
-    warn("prioridad bullish-sobre-bearish es un efecto secundario del ORDEN del codigo (if bullish: return ...; "
-         "luego bearish), no una decision de diseno documentada ni configurable",
-         "divergence_score() evalua primero el bloque alcista y retorna inmediatamente si encuentra una divergencia "
-         "valida, sin siquiera evaluar si tambien hay una bajista vigente (o si esta es mas reciente). La divergencia "
-         "bajista simultanea se descarta en silencio -- no aparece ni en el score ni en el reason ni en ningun log.")
+    check("regresion del bug original: SHORT ahora da +1 (antes del fix daba -1, ver reports/AUDIT-RSI-DIVERGENCE.md hallazgo #1)",
+          score_short == 1 and "bajista" in reason_short and "a favor" in reason_short,
+          f"score_short={score_short:+d} reason_short={reason_short!r}")
+    check("LONG da -1 (bajista en contra) -- consistente con que la bearish, mas reciente, es la que manda",
+          score_long == -1 and "bajista" in reason_long,
+          f"score_long={score_long:+d} reason_long={reason_long!r}")
+
+    # --- caso simetrico: bullish mas reciente -> debe ganar bullish ---
+    rsi_vals2 = np.full(n, 50.0)
+    close2 = np.full(n, 100.0)
+    rsi_vals2[60], close2[60] = 20.0, 95.0
+    rsi_vals2[101], close2[101] = 30.0, 90.0   # bullish, confirmation_bar=106 -- MAS RECIENTE
+    rsi_vals2[65], close2[65] = 80.0, 100.0
+    rsi_vals2[100], close2[100] = 70.0, 110.0  # bearish, confirmation_bar=105
+    detail2 = divergence_detail(+1, close2, rsi_vals2, current_bar)
+    check("simetrico: con bullish MAS reciente (106>105), ahora gana bullish (antes tambien ganaba bullish, pero por "
+          "casualidad de orden de codigo -- ahora es por confirmation_bar, se verifica explicitamente)",
+          detail2.resolved_state == DIVERGENCE_STATE_BULLISH and detail2.resolution == DIVERGENCE_RESOLUTION_MOST_RECENT,
+          f"resolved_state={detail2.resolved_state}, resolution={detail2.resolution}, "
+          f"bullish.confirmation_bar={detail2.bullish.confirmation_bar}, bearish.confirmation_bar={detail2.bearish.confirmation_bar}")
+
+    # --- CONFLICT: mismo confirmation_bar (candidatos sinteticos, ver nota en strategy/test_scoring.py) ---
+    bullish_tie = DivergenceCandidate(kind="bullish", pivot_bar=100, confirmation_bar=105, age=0,
+                                       prior_pivot_bar=60, prior_confirmation_bar=65,
+                                       latest_rsi=30.0, prior_rsi=20.0, latest_price=90.0, prior_price=95.0)
+    bearish_tie = DivergenceCandidate(kind="bearish", pivot_bar=100, confirmation_bar=105, age=0,
+                                       prior_pivot_bar=61, prior_confirmation_bar=66,
+                                       latest_rsi=70.0, prior_rsi=80.0, latest_price=110.0, prior_price=100.0)
+    res_conflict_long = resolve_divergence(+1, bullish_tie, bearish_tie)
+    res_conflict_short = resolve_divergence(-1, bullish_tie, bearish_tie)
+    print(f"\nCONFLICT (mismo confirmation_bar=105 para ambas): "
+          f"LONG -> score={res_conflict_long.score:+d} reason={res_conflict_long.reason!r}; "
+          f"SHORT -> score={res_conflict_short.score:+d} reason={res_conflict_short.reason!r}")
+    check("empate exacto de confirmation_bar -> CONFLICT, score=0 (NO es lo mismo que NONE)",
+          res_conflict_long.resolved_state == DIVERGENCE_STATE_CONFLICT
+          and res_conflict_short.resolved_state == DIVERGENCE_STATE_CONFLICT
+          and res_conflict_long.resolution == DIVERGENCE_RESOLUTION_CONFLICT
+          and res_conflict_long.score == 0 and res_conflict_short.score == 0
+          and "conflicto" in res_conflict_long.reason,
+          f"long={res_conflict_long}, short={res_conflict_short}")
+    check("CONFLICT se distingue textualmente de NONE ('sin divergencia vigente')",
+          res_conflict_long.reason != "sin divergencia vigente",
+          f"reason CONFLICT={res_conflict_long.reason!r} (distinto de 'sin divergencia vigente')")
 
 
 # ---------------------------------------------------------------------------
