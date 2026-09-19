@@ -1,0 +1,28 @@
+BOT-024.3 -- Validacion OOS de Momentum, XAUUSDc -- pre-flight
+SOLO LECTURA/AUDITORIA. No se modifico ningun archivo de produccion.
+No se descargo ningun dato nuevo (regla explicita del enunciado).
+
+
+=== 1. Dataset de discovery (BOT-024.2) -- confirmado desde el archivo, no de memoria ===
+Archivo: XAUUSDc_M5_latest.parquet
+Barras: 100505
+Timestamp inicial: 2025-04-14T18:50:03+00:00
+Timestamp final (CUTOFF de discovery): 2026-09-15T00:40:03+00:00
+[PASS] coincide con lo documentado en BOT-024.2 (100505 barras, cutoff 2026-09-15 00:40:03 UTC): n_disc=100505, t1=2026-09-15T00:40:03+00:00
+
+=== 2. Busqueda de dataset OOS (barras posteriores al cutoff, sin descargar nada) ===
+Archivos XAUUSD* en F:\dev\pivot-x-sentinel\backtests\data: ['XAUUSDc_M5_20260915T004019Z.parquet', 'XAUUSDc_M5_latest.parquet']
+  XAUUSDc_M5_20260915T004019Z.parquet: 100505 barras, hasta 2026-09-15T00:40:03+00:00, 0 barras estrictamente POSTERIORES al cutoff de discovery
+
+Total de barras OOS encontradas en el repositorio (fuera del dataset de discovery): 0
+
+=== 3. Decision ===
+BOT-024.3 BLOCKED -- insufficient OOS data
+
+Detalle exacto del bloqueo:
+  - Los datos disponibles en el repositorio llegan exactamente hasta 2026-09-15T00:40:03+00:00 (mismo cutoff que uso BOT-024.2 para discovery).
+  - Barras OOS encontradas (posteriores a ese cutoff, en cualquier archivo XAUUSD* de backtests/data/): 0.
+  - Por lo tanto: 0 LIMITS y 0 trades OOS evaluables -- no hay universo A ni B posible.
+  - No se reutilizo el periodo de discovery como si fuera OOS (prohibido explicitamente).
+  - No se descargo ningun dato nuevo (prohibido sin autorizacion explicita del usuario).
+  - Dataset adicional necesario: historial M5 real de XAUUSDc (o el simbolo que resuelva resolve_symbol('XAUUSD') en el broker conectado) con barras estrictamente posteriores a 2026-09-15T00:40:03+00:00, de duracion suficiente para acumular una muestra razonable de LIMITS (la Config A de BOT-024.2 genera aproximadamente 1 señal cada ~23 barras M5 sobre 100505 barras -- una ventana de pocos dias produciria una muestra demasiado chica para la mayoria de las hipotesis H1-H6, aunque igual seria un primer dato real, no simulado).
