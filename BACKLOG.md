@@ -8,7 +8,7 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 
 **Regla de trabajo (ver también el pie de este archivo):** antes de implementar algo importante, buscar o crear su ID acá, pasarlo a `IN PROGRESS`, implementar, correr los tests, y recién pasarlo a `DONE` con la versión donde quedó. Nunca borrar un ítem — si se cancela, pasa a `CANCELLED` con el motivo.
 
-**IDs:** secuenciales, nunca se reutilizan aunque el ítem se cancele. Última ID usada: **BOT-046**.
+**IDs:** secuenciales, nunca se reutilizan aunque el ítem se cancele. Última ID usada: **BOT-047**.
 
 **Convenciones:**
 - Estados: `TODO` · `IN PROGRESS` · `BLOCKED` · `DONE` · `CANCELLED`
@@ -25,18 +25,19 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 
 ## Prioridad actual de trabajo
 
-*(Última actualización: 2026-09-15, ver BOT-008.)* Esta sección representa el **orden operativo recomendado** — puede diferir de la prioridad intrínseca (`CRITICAL`/`HIGH`/`MEDIUM`/`LOW`) de cada ítem, que no se modifica solo para coincidir con este orden.
+*(Última actualización: 2026-09-19, ver BOT-024.2/BOT-024.3/BOT-047.)* Esta sección representa el **orden operativo recomendado** — puede diferir de la prioridad intrínseca (`CRITICAL`/`HIGH`/`MEDIUM`/`LOW`) de cada ítem, que no se modifica solo para coincidir con este orden.
 
-1. ~~**BOT-045** — Market regime / calidad de entradas~~ `DONE`. ~~**BOT-046** — Dirección/D1 + robustez temporal~~ `DONE` — recomendación: RESULTADO 2 (más historial), ver `docs/reports/BOT-046_direction_d1_temporal_robustness.md`. No se abre todavía una Prueba controlada de filtro/scoring.
-2. ~~**BOT-008** — Re-run completo del sweep~~ `DONE` — re-ejecutado con el motor corregido: ESCENARIO A marginal (edge real pero delgado, PF~1.05, dos configuraciones — `cfg_1260`/`cfg_1278` — positivas en USD en los 3 sub-períodos), ver `docs/reports/BOT-008_rerun_post_BOT043.md`. Próximo paso recomendado (no ejecutado): validación Out-of-Sample genuina sobre esas dos configuraciones, mismo criterio que `VALIDATION-D1-OOS` — no se abre automáticamente otro sweep ni se cambia producción.
+1. **BOT-024 — Signal Quality** (línea de investigación activa, `HIGH`): ~~**BOT-024.1** — Evaluación predictiva de Divergencia RSI~~ `DONE`. ~~**BOT-024.2** — Momentum Feature Discovery XAU~~ `DONE` — ver `reports/BOT-024.2-MOMENTUM-FEATURE-DISCOVERY.md`. **BOT-024.3** — Momentum Out-of-Sample Validation `BLOCKED — waiting for genuine OOS` (no existe histórico posterior al 2026-09-15 en el repositorio, ver `reports/BOT-024.3-MOMENTUM-OOS.md`). **BOT-047 — D1 Alignment Feature Discovery** `NEXT` — siguiente paso de investigación mientras se acumula historial para desbloquear BOT-024.3. BOT-024 en sí (definición formal de Signal Quality 0–100) permanece `TODO`, no se implementa nada de esto todavía.
+2. ~~**BOT-045** — Market regime / calidad de entradas~~ `DONE`. ~~**BOT-046** — Dirección/D1 + robustez temporal~~ `DONE` — recomendación: RESULTADO 2 (más historial), ver `docs/reports/BOT-046_direction_d1_temporal_robustness.md`. No se abre todavía una Prueba controlada de filtro/scoring; su continuación conceptual para la dimensión Alignment de Signal Quality es BOT-047 (ID nueva, no una reapertura de BOT-046 — ver esa entrada).
+3. ~~**BOT-008** — Re-run completo del sweep~~ `DONE` — re-ejecutado con el motor corregido: ESCENARIO A marginal (edge real pero delgado, PF~1.05, dos configuraciones — `cfg_1260`/`cfg_1278` — positivas en USD en los 3 sub-períodos), ver `docs/reports/BOT-008_rerun_post_BOT043.md`. Próximo paso recomendado (no ejecutado): validación Out-of-Sample genuina sobre esas dos configuraciones, mismo criterio que `VALIDATION-D1-OOS` — no se abre automáticamente otro sweep ni se cambia producción.
 
-   **Con BOT-008 cerrado, la línea de investigación/optimización sobre este espacio de parámetros queda CERRADA** (ver "DECISIÓN — Cierre temporal de optimización histórica" al final del archivo) — `cfg_1260`/`cfg_1278` y la hipótesis D1 quedan congeladas para `VALIDATION-CONFIG-OOS`/`VALIDATION-D1-OOS` (futuro, con datos OOS posteriores al 2026-09-15, no ejecutar todavía). El proyecto retoma la secuencia funcional/operativa ya acordada — **próxima US activa: BOT-032** (punto 3 abajo).
-3. ~~**BOT-032** — Kill switch / máxima pérdida~~ `DONE` (v1.1.0) — protección de capital, mejora independiente de la optimización de estrategia. Ver detalle en "Gestión de riesgo" abajo y `docs/reports/BOT-032_kill_switch.md`.
-4. **BOT-024 + BOT-025** — Normalización y gate de scoring (`LOW`/`MEDIUM`) — evaluar su implementación ahora que se conocen los resultados de BOT-045 (factores de scoring existentes sin poder explicativo robusto salvo lo ya cubierto por BOT-046). BOT-025 sigue dependiendo de BOT-024.
-5. **BOT-033** — Alerta de noticias económicas (`MEDIUM`).
-6. **BOT-038** — Checklist de validación (`HIGH`) — revisar/redefinir considerando que el bot ya está operando en real.
-7. **BOT-044** — Fix de conversión de comisión en CVP (`LOW` mientras `commission_usd` siga siendo 0).
-8. **BOT-039 / BOT-040** — documentación/deuda técnica.
+   **Con BOT-008 cerrado, la línea de investigación/optimización sobre este espacio de parámetros queda CERRADA** (ver "DECISIÓN — Cierre temporal de optimización histórica" al final del archivo) — `cfg_1260`/`cfg_1278` y la hipótesis D1 quedan congeladas para `VALIDATION-CONFIG-OOS`/`VALIDATION-D1-OOS` (futuro, con datos OOS posteriores al 2026-09-15, no ejecutar todavía — misma barrera de datos que bloquea BOT-024.3). El proyecto retoma la secuencia funcional/operativa ya acordada — **próxima US activa: BOT-032** (punto 4 abajo).
+4. ~~**BOT-032** — Kill switch / máxima pérdida~~ `DONE` (v1.1.0) — protección de capital, mejora independiente de la optimización de estrategia. Ver detalle en "Gestión de riesgo" abajo y `docs/reports/BOT-032_kill_switch.md`.
+5. **BOT-025** — Gate configurable de scoring (`MEDIUM`) — sigue dependiendo de que BOT-024 defina una escala estable (todavía en investigación, ver punto 1).
+6. **BOT-033** — Alerta de noticias económicas (`MEDIUM`).
+7. **BOT-038** — Checklist de validación (`HIGH`) — revisar/redefinir considerando que el bot ya está operando en real.
+8. **BOT-044** — Fix de conversión de comisión en CVP (`LOW` mientras `commission_usd` siga siendo 0).
+9. **BOT-039 / BOT-040** — documentación/deuda técnica.
 
 BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal disponible para esa validación — decisión explícita de no crear infraestructura adicional (segunda instancia del bot/MT5, otra máquina, otra IP) solo para desbloquearlo; ver nota en el propio ítem. La investigación de estrategia (BOT-045 y lo que siga) se hace OFFLINE sobre datasets históricos y scripts de backtesting, sin necesitar una segunda sesión de MT5, y el bot productivo permanece aislado de estos experimentos.
 
@@ -366,15 +367,28 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
 - **Notas técnicas:** Guardado vía `execution/src/score_store.py` (sobrevive upgrades del instalador — carpeta de datos de usuario, no la reemplazable). Verificado con `strategy/test_scoring.py` — **pasa** (confirmado en esta sesión, 8 casos). Corresponde exactamente al pedido original del usuario de "mejorar la calificación de las entradas" con divergencia/tendencia/CVP + "otros factores técnicos" (Nodo).
 - **Dependencias:** BOT-003, BOT-004.
 
-### BOT-024 — Normalizar el score a escala 0–100
+### BOT-024 — Signal Quality: evolucionar el scoring aditivo hacia una escala 0–100
 - **Categoría:** Scoring
 - **Estado:** TODO
 - **Prioridad:** LOW
 - **Incorporado:** 2026-09-14
 - **Versión objetivo:** sin definir
-- **Descripción:** Hoy el score es aditivo (`total=+2`, `-1`, etc., suma de los 4 factores ±1). El pedido original es una escala tipo `Signal Score: 82/100`. Definir la fórmula de normalización (y si cada factor pesa igual) antes de implementar.
+- **Descripción:** El pedido original era simplemente normalizar el score aditivo actual (`total=+2`, `-1`, etc.) a una escala tipo `Signal Score: 82/100`. El diseño evolucionó desde entonces (ver subtareas abajo): **antes de definir cualquier fórmula de normalización o peso, primero se está investigando qué dimensiones tienen evidencia suficiente para formar el futuro `Signal Quality`.** La arquitectura conceptual actualmente considerada (todavía diseño/investigación, nada implementado) es:
+  - **Momentum** — velocidad/persistencia/aceleración del movimiento de precio en `limit_created_bar` (BOT-024.2/BOT-024.3).
+  - **Alignment** — si la dirección del trade está a favor o en contra del contexto direccional de mayor plazo (D1) (BOT-047, sucesor conceptual de BOT-045/BOT-046).
+  - **Structure** — estructura técnica del precio (sin investigación propia todavía).
+  - **Economics** — RR, costos, spread, stop (parcialmente cubierto hoy por el factor CVP de BOT-023).
+  - **Context** — sesión, hora, régimen (diagnosticado parcialmente en BOT-045, sin dimensión formal todavía).
+
+  No se asignan pesos ni se implementa ninguna de estas dimensiones en esta entrada — es únicamente el marco conceptual que están llenando las subtareas de investigación.
 - **Dependencias:** BOT-023.
-- **Subtareas/experimentos:** ver `BOT-024.1` inmediatamente abajo — auditoría y evaluación predictiva de Divergencia RSI, insumo de diagnóstico para decidir cómo (o si) ese factor entra en la normalización/Momentum. BOT-024 en sí (la normalización 0–100) sigue `TODO`, no se implementó en BOT-024.1.
+- **Subtareas/experimentos:**
+  - `BOT-024.1` `DONE` — auditoría y evaluación predictiva de Divergencia RSI (insumo de diagnóstico, no es Momentum en sí).
+  - `BOT-024.2` `DONE` — Momentum Feature Discovery XAU (BTC bloqueado).
+  - `BOT-024.3` `BLOCKED` — Momentum Out-of-Sample Validation (esperando histórico genuinamente nuevo).
+  - `BOT-047` `TODO/NEXT` — D1 Alignment Feature Discovery.
+
+  BOT-024 en sí (la definición formal de Signal Quality 0–100) sigue `TODO` — no se cierra hasta tener evidencia suficientemente validada (OOS) de al menos Momentum y Alignment.
 
 ### BOT-024.1 — Evaluación predictiva A/B de Divergencia RSI
 - **Categoría:** Scoring
@@ -385,8 +399,45 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
 - **Descripción:** Subtarea trazable de `BOT-024` (Signal Quality). Encadena tres auditorías 100% READ-ONLY sobre `strategy/scoring.py` (ninguna modificó producción): (1) auditoría de la implementación de Divergencia RSI (`reports/AUDIT-RSI-DIVERGENCE.md`) — causal, RSI Wilder correcto, encontró y luego se corrigió (commit aparte) una prioridad accidental bullish-sobre-bearish en divergencias simultáneas; (2) auditoría A/B de fuente de precio, `close` (actual) vs. `low`/`high` (`reports/AUDIT-RSI-PRICE-SOURCE.md`) — ambas definiciones detectan conjuntos de divergencias materialmente distintos (3.4% de discrepancia sobre 100 474 barras reales), sin relación de subconjunto en ninguna dirección; (3) esta evaluación predictiva (`reports/BOT-024.1-RSI-DIVERGENCE-PREDICTIVE.md`) — sobre los 2474 trades cerrados/evaluables que `strategy.engine.run_backtest` genera con "Config A" (mismo dataset y configuración que BOT-042/043/045), congelando Divergencia A/B causalmente en `limit_created_bar` (verificado exhaustivamente contra `divergence_detail()` real de producción, 0 discrepancias en 2474/2474).
 - **Resultado (2026-09-19):** la cohorte `OPPOSED` (divergencia en contra de la dirección del trade) es la más informativa: expectancy negativa con intervalo de confianza bootstrap 95% que excluye cero (por-trade y por-evento, clustering mínimo — máx. 2 trades por evento), consistente en signo en los 3 subperíodos cronológicos y en LONG/SHORT, aunque solo alcanza significancia estadística aislada dentro de LONG (N=55/52). Hallazgo no anticipado: el agregado `ALIGNED` es casi neutro frente al baseline, pero esconde dos efectos opuestos que se cancelan — dentro de LONG, `ALIGNED` rinde **peor** que el baseline de LONG (IC95% excluye cero, contrario a la intuición de "señal a favor"), mientras que dentro de SHORT rinde mejor (sin significancia). A y B (`close` vs. `low`/`high`) muestran comportamiento cualitativamente muy similar — A con un efecto `OPPOSED` levemente más marcado. Ningún patrón se clasificó por encima de `PROMISING` (ver tabla de clasificación en el reporte); ninguno se convirtió en peso de scoring. No se implementó Momentum, no se integró D1, no se activó ningún gate. **Reporte completo:** `reports/BOT-024.1-RSI-DIVERGENCE-PREDICTIVE.md`. Script: `scripts/evaluate_rsi_divergence_predictive.py`. Dataset por trade: `reports/BOT-024.1-RSI-DIVERGENCE-PREDICTIVE.csv`.
 - **Notas técnicas:** Reusa `strategy.engine.run_backtest`/`strategy.scoring.*` sin modificarlos. Universo de trades fijo entre A y B (feature attribution, no gating) — deliberadamente NO se corrió "bot filtrando con A" vs. "bot filtrando con B" (eso mezclaría calidad de señal con cambio de universo de operaciones; queda para un experimento separado si la evidencia lo justifica).
-- **Siguiente paso planificado dentro de BOT-024 (no diseñado aún):** Momentum — definir qué papel merece Divergencia RSI ahí, considerando en particular el hallazgo de `OPPOSED` y la interacción con la dirección del trade.
+- **Siguiente paso planificado dentro de BOT-024 (ya ejecutado, ver abajo):** Momentum — definir qué papel merece Divergencia RSI ahí, considerando en particular el hallazgo de `OPPOSED` y la interacción con la dirección del trade. Continuado en `BOT-024.2` (Momentum Feature Discovery), que reconfirmó la interacción `OPPOSED` × Momentum como hipótesis de agotamiento (N pequeño, no validada) — ver esa entrada.
 - **Dependencias:** BOT-023 (factores de scoring existentes).
+
+### BOT-024.2 — Momentum Feature Discovery XAU + BTC
+- **Categoría:** Scoring / Investigación
+- **Estado:** DONE
+- **Prioridad:** HIGH
+- **Incorporado:** 2026-09-19
+- **Versión objetivo:** N/A — investigación offline
+- **Descripción:** Subtarea de `BOT-024` (Signal Quality), sucesora directa de `BOT-024.1`. Estudio 100% offline, causal y read-only respecto a producción, congelado en `limit_created_bar` (`== signal_bar == born_bar`, mismo punto de congelación validado en BOT-024.1) — sin construir `MomentumScore`, sin asignar pesos, sin activar gating. Objetivo: identificar qué propiedades observables del movimiento de precio (velocidad/ROC, pendiente de EMA, persistencia/eficiencia, aceleración, RSI extendido, volatilidad ATR) muestran evidencia de Momentum predictivo, separando explícitamente Universo A (todos los LIMITS creados, para probabilidad de fill) de Universo B (trades filled/cerrados, para desempeño condicional).
+  - **Decisión de activo prioritario (permanente, ver también más abajo):** XAUUSD es el activo prioritario del bot para diseño, investigación y validación. La estrategia nació originalmente para BTC (que el bot puede seguir operando ocasionalmente), pero ninguna decisión de scoring/estrategia debe degradarse para forzar simetría con BTC.
+  - **Estado BTC en esta tarea:** bloqueado y documentado, no inventado. Verificado en vivo (solo lectura, sin órdenes) contra la cuenta conectada: `BTCUSD` resuelve ambiguamente a dos símbolos (`BTCUSDc` / `BTCUSDTc`), no existe dataset histórico BTC validado en el repositorio, y no existe ninguna configuración de estrategia BTC equivalente a "Config A". Por esto BOT-024.2 continuó correctamente solo con XAU (activo prioritario).
+  - **Universos:** Universo A = 3.207 LIMITS creados; Universo B = 2.474 trades filled + cerrados (mismo universo exacto que BOT-024.1/BOT-045, mismo motor/dataset/Config A). Paridad del "shadow replay" (reconstruye el detalle de LIMITS que `run_backtest()` no retiene) contra `strategy.engine.run_backtest()` real: **exhaustiva, 0 discrepancias** (8/8 counters, 2.474/2.474 trades en todos sus campos).
+  - **Hallazgos principales (sin exagerar el alcance — discovery, no validación):**
+    1. Momentum favorable al trade en `limit_created_bar` mostró una relación fuerte y monotónica con **menor** probabilidad de fill del LIMIT (el hallazgo más robusto del estudio).
+    2. Condicionado a que la operación efectivamente hiciera fill, ciertas medidas de momentum de corto plazo mostraron una relación potencial con mejores resultados — más débil y menos consistente que el hallazgo de fill rate.
+    3. `P(fill | momentum)` y `P(outcome | filled, momentum)` son fenómenos distintos que no deben mezclarse automáticamente en un futuro diseño de Momentum.
+    4. `roc_atr_3` quedó como candidato principal de impulso de muy corto plazo.
+    5. `rsi_delta_3` resultó altamente redundante con `roc_atr_3` (ρ≈0.935) — se conserva principalmente como control de redundancia, no como feature independiente.
+    6. `ema_slope_atr_5` quedó como candidato independiente a validar (patrón parcialmente contraintuitivo, requiere entender la causa).
+    7. `atr_pct` quedó como candidato de contexto de volatilidad — no se trata como componente de Momentum en sí.
+    8. La interacción `Divergence OPPOSED × Momentum fuerte` mostró un resultado potencialmente desfavorable (peor que `OPPOSED × Momentum débil`), pero con N pequeño (36 vs. 59) — requiere validación, no es hallazgo confirmado.
+    9. RSI extremo (>70/<30) prácticamente no existe en `limit_created_bar` para esta estrategia sobre XAU (0/2.474 en Universo B, 8/3.207 en Universo A) — hallazgo estructural del mecanismo de señal, no quedó como candidato útil para Momentum en XAU.
+  - **Ninguno de estos hallazgos se implementó como score, peso, filtro ni cambio de producción.**
+- **Notas técnicas:** Reusa sin modificar `strategy.engine.ema()`/`bucket_levels()` y `strategy.scoring.rsi()`/`find_confirmed_pivots()`/`resolve_divergence()`/`divergence_detail()`. ATR Wilder (no existe en `/strategy`) reusado verbatim de `backtests/scripts/07_bot045_regime_dataset.py::atr_wilder`. **Reporte completo:** `reports/BOT-024.2-MOMENTUM-FEATURE-DISCOVERY.md`. Script: `scripts/discover_momentum_features_xau.py`. Evidence log: `reports/BOT-024.2-MOMENTUM-FEATURE-DISCOVERY-EVIDENCE.log`. Datasets: `reports/BOT-024.2-momentum-limits-xau.csv` (Universo A), `reports/BOT-024.2-momentum-trades-xau.csv` (Universo B).
+- **Siguiente paso planificado dentro de BOT-024 (bloqueado, ver `BOT-024.3`):** validar OOS la shortlist de candidatos de esta tarea antes de considerar cualquiera de ellos para un diseño formal de Momentum.
+- **Dependencias:** BOT-024.1 (evidencia de entrada sobre Divergencia RSI, no reinterpretada acá).
+
+### BOT-024.3 — Momentum Out-of-Sample Validation
+- **Categoría:** Scoring / Investigación / Validación
+- **Estado:** BLOCKED
+- **Prioridad:** HIGH
+- **Incorporado:** 2026-09-19
+- **Versión objetivo:** N/A — investigación offline
+- **Descripción:** Subtarea de `BOT-024`, sucesora de `BOT-024.2`. Objetivo: validar Out-of-Sample (con datos que nunca participaron en el discovery) las hipótesis congeladas de BOT-024.2 (H1 `roc_atr_3` → Fill Rate; H2 `roc_atr_3` → resultado condicional al fill; H3 redundancia `roc_atr_3` ↔ `rsi_delta_3`; H4 `ema_slope_atr_5`; H5 `atr_pct`; H6 `Divergence OPPOSED` × Momentum), con thresholds/quintiles congelados desde discovery (nunca recalculados sobre OOS), sin feature discovery nuevo, sin optimizar parámetros.
+- **Motivo del bloqueo:** BOT-024.2 utilizó todo el histórico XAU local disponible, confirmado directamente desde el dataset (no de memoria): `backtests/data/XAUUSDc_M5_latest.parquet`, 100.505 barras, hasta exactamente **2026-09-15T00:40:03 UTC**. Al ejecutar el pre-flight de esta tarea (2026-09-19) se verificó que **no existe ninguna barra en el repositorio posterior a ese cutoff** — el único otro archivo `XAUUSDc_M5_*.parquet` resultó ser el mismo dataset (idéntico byte a byte, no un segundo archivo). No se descargó ningún dato nuevo (requiere autorización explícita del usuario, no asumida en esta tarea) y no se reutilizó el período de discovery como si fuera OOS (prohibido explícitamente). Con la fecha actual, quedarían disponibles como mucho ~4 días (~1.150 barras M5) si se descargaran — insuficiente para una validación OOS estadísticamente razonable de la mayoría de las hipótesis H1-H6.
+- **Regla al desbloquear (congelada, no modificar cuando haya datos):** mismos thresholds/quintiles de discovery (reconstruidos desde `XAUUSDc_M5_latest.parquet`, nunca recalculados sobre OOS); mismos Universo A/Universo B; misma separación causal en `limit_created_bar`; separar LONG/SHORT; separar `P(fill | momentum)` de `P(outcome | filled, momentum)`; sin feature fishing (nada de ROC2/4/6, ATR/EMA period nuevos, thresholds alternativos u optimizar LONG/SHORT por separado); paridad exhaustiva (shadow replay, 0 discrepancias) contra `strategy.engine.run_backtest()` antes de interpretar cualquier resultado.
+- **Notas técnicas:** `scripts/validate_momentum_oos_xau.py` ya implementa la detección automática del cutoff de discovery y la búsqueda de barras OOS — re-ejecutarlo sin cambios es suficiente para saber si esta tarea puede desbloquearse. **Reporte completo:** `reports/BOT-024.3-MOMENTUM-OOS.md`. Evidence log: `reports/BOT-024.3-MOMENTUM-OOS-evidence.txt`. No se generaron CSVs de Universo A/B (no obligatorio en caso de bloqueo).
+- **Dependencias:** BOT-024.2 (hipótesis y thresholds a validar, no reinterpretados acá).
 
 ### BOT-025 — Gate configurable `minimum_entry_score`
 - **Categoría:** Scoring
@@ -397,6 +448,19 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
 - **Descripción:** Permitir rechazar una entrada si su score queda por debajo de un umbral configurable (`minimum_entry_score = 70`, por ejemplo). El diseño de `scoring.py` ya contempla esto para el factor CVP específicamente ("el gate... está descripto en el diseño pero deliberadamente desactivado en esta primera pasada") — falta generalizarlo al score total y exponerlo como configuración.
 - **Notas técnicas:** Debe seguir siendo una capa que se pueda desactivar — no reemplazar la lógica base de señales (`engine.py`/`live_signal.py`).
 - **Dependencias:** BOT-023, BOT-024 (para que el umbral tenga una escala estable antes de fijar un default razonable).
+
+### BOT-047 — D1 Alignment Feature Discovery
+- **Categoría:** Scoring / Investigación
+- **Estado:** TODO
+- **Prioridad:** HIGH
+- **Incorporado:** 2026-09-19
+- **Versión objetivo:** N/A — investigación offline
+- **Descripción:** Subtarea de `BOT-024` (Signal Quality), dimensión `Alignment`. Objetivo: descubrir qué variables observables de temporalidad D1 representan de forma útil y causal el concepto de Alignment — **si la dirección propuesta por el trade está alineada o en contra del contexto direccional de mayor plazo** — explícitamente separado de Momentum (`BOT-024.2`/`BOT-024.3`). No debe asumir de antemano reglas como "precio > EMA200 D1 = bullish" ni "LONG + precio sobre EMA = buena señal" — primero debe hacerse feature discovery, igual que se hizo con Momentum. Variables candidatas iniciales a estudiar (no son requisitos ni reglas finales): distancia precio↔EMA D1 normalizada, pendiente de EMA D1, retorno D1 reciente, estructura D1, RSI D1 como estado direccional, LONG/SHORT explícito.
+  - **Causalidad D1:** debe estudiarse cuidadosamente la diferencia entre el D1 ya cerrado (anterior) y el D1 en formación conocido hasta `limit_created_bar` — nunca usar el cierre futuro del día de la entrada. Mismo estándar de rigor causal que `BOT-024.2` (congelado en `limit_created_bar`, sin lookahead).
+  - **Relación con BOT-045/BOT-046:** reutiliza esos hallazgos como antecedente/contexto histórico (no se reinterpretan ni se descartan), pero **no asume** que la definición anterior de `aligned_with_d1` (BOT-045/046) sea necesariamente la definición final de la dimensión Alignment de Signal Quality. BOT-045/046 preguntaban "¿la hipótesis D1 tiene robustez?"; BOT-047 amplía la pregunta a "¿cómo debemos representar formalmente Alignment?". **`BOT-046` permanece `DONE` sin cambios — esta es una ID nueva, no una reapertura ni un `BOT-046.1`.**
+  - **Restricciones (igual que BOT-024.2):** offline, discovery, read-only respecto a producción. No implementa score, pesos, gating, cambios de estrategia, cambios de producción, ni optimización de parámetros.
+  - **Futuro OOS:** cualquier hipótesis que salga de BOT-047 deberá pasar por una validación Out-of-Sample (misma disciplina que `BOT-024.3`) antes de formar parte de Signal Quality — no se asigna todavía una ID para esa etapa futura, no existe trabajo ejecutable aún.
+- **Dependencias:** BOT-045, BOT-046 (antecedentes, reutilizados como contexto, no reinterpretados).
 
 ### BOT-044 — `scoring.py::cvp_score()` convierte comisión a precio con `contract_size` (mismo patrón que BOT-043, en código que corre en vivo)
 - **Categoría:** Scoring
@@ -591,7 +655,7 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
 Antes de implementar cualquier funcionalidad nueva importante:
 
 1. Revisar este `BACKLOG.md`.
-2. Crear o identificar el ID correspondiente (siguiente disponible: **BOT-047**).
+2. Crear o identificar el ID correspondiente (siguiente disponible: **BOT-048**).
 3. Cambiarlo a `IN PROGRESS` al comenzar.
 4. Implementar.
 5. Correr los tests correspondientes (ver los scripts `test_*.py` de cada módulo — no hay `pytest` instalado en el entorno, se corren como script plano: `python strategy/test_engine.py`, etc.).
@@ -736,3 +800,18 @@ A partir del cierre de BOT-008:
 Los candidatos de BOT-008 (`cfg_1260`, `cfg_1278`) y la hipótesis D1 de BOT-045/BOT-046 quedan **congelados** para validación futura (`VALIDATION-CONFIG-OOS` y `VALIDATION-D1-OOS`, ambos arriba). El proyecto vuelve ahora al backlog funcional/operativo previamente acordado — ver "Prioridad actual de trabajo" al principio de este archivo.
 
 Esto tiene como objetivo evitar *data mining* y ciclos indefinidos de análisis sobre el mismo dataset.
+
+---
+
+## DECISIÓN — XAUUSD como activo prioritario (principio multi-activo permanente)
+
+**Fecha:** 2026-09-19 (formalizada durante BOT-024.2, aplica a todo el proyecto hacia adelante)
+
+> **XAUUSD es el activo prioritario del bot.** BTC es secundario. La estrategia nació originalmente para Bitcoin y posteriormente se trasladó/adaptó a Oro, por lo que el bot puede seguir operando BTC ocasionalmente — el diseño debe conservar compatibilidad multi-activo cuando sea razonable.
+
+Reglas derivadas, permanentes:
+
+- Ninguna decisión de scoring, estrategia o arquitectura debe **degradar una solución mejor para XAU** únicamente para forzar simetría/paridad con BTC.
+- Los estudios/investigaciones deben reportar resultados **por activo** cuando existan datasets/configuraciones validados para más de uno — nunca mezclar XAU+BTC en una sola muestra estadística (eso escondería diferencias reales entre activos).
+- Si una feature/hallazgo funciona en ambos activos, se reporta como evidencia de generalización; si funciona solo en XAU, sigue siendo candidata válida; si funciona solo en BTC, se documenta como específica de BTC pero no dirige el diseño principal.
+- **Estado actual de BTC (confirmado en BOT-024.2, 2026-09-19):** bloqueado para cualquier estudio predictivo — `resolve_symbol("BTCUSD")` es ambiguo en el bróker conectado (`BTCUSDc` vs. `BTCUSDTc`), no existe dataset histórico BTC validado en el repositorio, y no existe ninguna configuración de estrategia BTC equivalente a "Config A". No se resuelve por cuenta propia en tareas futuras — requiere evidencia explícita nueva en el repositorio (símbolo exacto decidido, dataset descargado, configuración validada) antes de desbloquearse.
