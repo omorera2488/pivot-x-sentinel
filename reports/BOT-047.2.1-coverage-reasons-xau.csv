@@ -1,0 +1,15 @@
+direction,sub_periodo,reason_naive,n
+LONG,sub1,classified,100
+LONG,sub1,insufficient_blocks(<3),2
+LONG,sub1,mixed_sequence(0),286
+LONG,sub2,classified,108
+LONG,sub2,mixed_sequence(0),231
+LONG,sub3,classified,106
+LONG,sub3,mixed_sequence(0),356
+SHORT,sub1,classified,118
+SHORT,sub1,insufficient_blocks(<3),16
+SHORT,sub1,mixed_sequence(0),309
+SHORT,sub2,classified,120
+SHORT,sub2,mixed_sequence(0),310
+SHORT,sub3,classified,92
+SHORT,sub3,mixed_sequence(0),320
