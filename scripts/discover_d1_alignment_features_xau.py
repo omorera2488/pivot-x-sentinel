@@ -870,17 +870,18 @@ def main() -> int:
         cov = df_a[c].notna().mean() if c in df_a else float("nan")
         print(f"  {c:28s} cobertura={cov*100:5.1f}%")
 
-    csv_a = REPORTS_DIR / "BOT-047.1-d1-alignment-limits-xau.csv"
-    df_a.drop(columns=[c for c in df_a.columns if c.startswith("_")]).to_csv(csv_a, index=False)
-    print(f"\nCSV Universo A escrito: {csv_a} ({len(df_a)} filas)")
-    csv_b = REPORTS_DIR / "BOT-047.1-d1-alignment-trades-xau.csv"
-    df_b_out = df_a[df_a["fate"] == "FILLED_CLOSED"].drop(columns=[c for c in df_a.columns if c.startswith("_")])
-    df_b_out.to_csv(csv_b, index=False)
-    print(f"CSV Universo B escrito: {csv_b} ({len(df_b_out)} filas)")
-    df_b = df_b_out
+    df_b = df_a[df_a["fate"] == "FILLED_CLOSED"].copy()
 
     # ---------------------------------------------------------------------------
     # I. legacy_aligned_with_d1 (BOT-045/046) -- comparacion descriptiva
+    #
+    # BOT-047.2 (2026-09-20) encontro que los CSV de esta tarea se escribian
+    # ANTES de calcular legacy_aligned_with_d1 -- la columna quedaba en None/NaN
+    # en disco (aunque el log impreso mostraba los numeros reales, calculados
+    # en memoria). Fix: mover la escritura de los CSV a DESPUES de esta
+    # seccion (ver mas abajo), para que la columna quede correcta en disco.
+    # No cambia ninguna otra columna ni metodologia -- solo el orden de
+    # ejecucion. Ver reports/BOT-047.2-ALIGNMENT-DEFINITION-FREEZE.md.
     # ---------------------------------------------------------------------------
     section("I. Comparacion descriptiva con la hipotesis historica BOT-045/046 (aligned_with_d1)")
     print("Reconstruye 'd1_trend'/'aligned_with_d1' con la MISMA metodologia exacta de "
@@ -910,6 +911,13 @@ def main() -> int:
         legacy_vals.append((d1_dir == d) if d1_dir not in (None, 0) else None)
     df_a["legacy_aligned_with_d1"] = legacy_vals
     df_b["legacy_aligned_with_d1"] = df_a.loc[df_a["fate"] == "FILLED_CLOSED", "legacy_aligned_with_d1"].values
+
+    csv_a = REPORTS_DIR / "BOT-047.1-d1-alignment-limits-xau.csv"
+    df_a.drop(columns=[c for c in df_a.columns if c.startswith("_")]).to_csv(csv_a, index=False)
+    print(f"\nCSV Universo A escrito: {csv_a} ({len(df_a)} filas)")
+    csv_b = REPORTS_DIR / "BOT-047.1-d1-alignment-trades-xau.csv"
+    df_b.drop(columns=[c for c in df_b.columns if c.startswith("_")]).to_csv(csv_b, index=False)
+    print(f"CSV Universo B escrito: {csv_b} ({len(df_b)} filas)")
 
     n_legacy_true = int((df_b["legacy_aligned_with_d1"] == True).sum())  # noqa: E712
     n_legacy_false = int((df_b["legacy_aligned_with_d1"] == False).sum())  # noqa: E712
