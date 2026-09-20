@@ -8,12 +8,13 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 
 **Regla de trabajo (ver también el pie de este archivo):** antes de implementar algo importante, buscar o crear su ID acá, pasarlo a `IN PROGRESS`, implementar, correr los tests, y recién pasarlo a `DONE` con la versión donde quedó. Nunca borrar un ítem — si se cancela, pasa a `CANCELLED` con el motivo.
 
-**IDs:** secuenciales, nunca se reutilizan aunque el ítem se cancele. Última ID usada: **BOT-047**.
+**IDs:** secuenciales, nunca se reutilizan aunque el ítem se cancele. Última ID **principal** usada: **BOT-047**. Siguiente disponible: **BOT-048**. Los IDs decimales (`BOT-XXX.1`, `.2`, `.3`, ...) no consumen IDs principales nuevos — ver "Convención para features experimentales" más abajo.
 
 **Convenciones:**
 - Estados: `TODO` · `IN PROGRESS` · `BLOCKED` · `DONE` · `CANCELLED`
 - Prioridades: `CRITICAL` · `HIGH` · `MEDIUM` · `LOW`
 - "Versión objetivo" solo se completa si ya está decidido — la mayoría de lo pendiente todavía no tiene versión asignada.
+- Features experimentales que requieren discovery estadístico usan la subestructura `BOT-XXX.1/.2/.3` (Feature Discovery / Definition Freeze / OOS Validation) — ver "Convención para features experimentales" más abajo. No es obligatoria para bugs, fixes, UI, infraestructura, packaging, documentación u otras tareas ya claramente definidas.
 
 ---
 
@@ -25,10 +26,10 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 
 ## Prioridad actual de trabajo
 
-*(Última actualización: 2026-09-19, ver BOT-024.2/BOT-024.3/BOT-047.)* Esta sección representa el **orden operativo recomendado** — puede diferir de la prioridad intrínseca (`CRITICAL`/`HIGH`/`MEDIUM`/`LOW`) de cada ítem, que no se modifica solo para coincidir con este orden.
+*(Última actualización: 2026-09-20, ver BOT-024.2/BOT-024.3/BOT-047/BOT-047.1/BOT-047.2/BOT-047.3.)* Esta sección representa el **orden operativo recomendado** — puede diferir de la prioridad intrínseca (`CRITICAL`/`HIGH`/`MEDIUM`/`LOW`) de cada ítem, que no se modifica solo para coincidir con este orden.
 
-1. **BOT-024 — Signal Quality** (línea de investigación activa, `HIGH`): ~~**BOT-024.1** — Evaluación predictiva de Divergencia RSI~~ `DONE`. ~~**BOT-024.2** — Momentum Feature Discovery XAU~~ `DONE` — ver `reports/BOT-024.2-MOMENTUM-FEATURE-DISCOVERY.md`. **BOT-024.3** — Momentum Out-of-Sample Validation `BLOCKED — waiting for genuine OOS` (no existe histórico posterior al 2026-09-15 en el repositorio, ver `reports/BOT-024.3-MOMENTUM-OOS.md`). **BOT-047 — D1 Alignment Feature Discovery** `NEXT` — siguiente paso de investigación mientras se acumula historial para desbloquear BOT-024.3. BOT-024 en sí (definición formal de Signal Quality 0–100) permanece `TODO`, no se implementa nada de esto todavía.
-2. ~~**BOT-045** — Market regime / calidad de entradas~~ `DONE`. ~~**BOT-046** — Dirección/D1 + robustez temporal~~ `DONE` — recomendación: RESULTADO 2 (más historial), ver `docs/reports/BOT-046_direction_d1_temporal_robustness.md`. No se abre todavía una Prueba controlada de filtro/scoring; su continuación conceptual para la dimensión Alignment de Signal Quality es BOT-047 (ID nueva, no una reapertura de BOT-046 — ver esa entrada).
+1. **BOT-024 — Signal Quality** (línea de investigación activa, `HIGH`): ~~**BOT-024.1** — Evaluación predictiva de Divergencia RSI~~ `DONE`. ~~**BOT-024.2** — Momentum Feature Discovery XAU~~ `DONE` — ver `reports/BOT-024.2-MOMENTUM-FEATURE-DISCOVERY.md`. **BOT-024.3** — Momentum Out-of-Sample Validation `BLOCKED — waiting for genuine OOS` (no existe histórico posterior al 2026-09-15 en el repositorio, ver `reports/BOT-024.3-MOMENTUM-OOS.md`). **BOT-047 — D1 Alignment** (feature padre, `IN PROGRESS / RESEARCH`): **BOT-047.1 — D1 Alignment Feature Discovery** `NEXT` — siguiente paso de investigación mientras se acumula historial para desbloquear BOT-024.3. **BOT-047.2 — D1 Alignment Definition Freeze** `BLOCKED` — depende de BOT-047.1. **BOT-047.3 — D1 Alignment OOS Validation** `BLOCKED` — depende de BOT-047.2 y de histórico OOS genuinamente nuevo. BOT-024 en sí (definición formal de Signal Quality 0–100) permanece `TODO`, no se implementa nada de esto todavía.
+2. ~~**BOT-045** — Market regime / calidad de entradas~~ `DONE`. ~~**BOT-046** — Dirección/D1 + robustez temporal~~ `DONE` — recomendación: RESULTADO 2 (más historial), ver `docs/reports/BOT-046_direction_d1_temporal_robustness.md`. No se abre todavía una Prueba controlada de filtro/scoring; su continuación conceptual para la dimensión Alignment de Signal Quality es la secuencia **BOT-047.1 → BOT-047.2 → BOT-047.3** dentro de la feature padre `BOT-047` (ID nueva, no una reapertura de BOT-046 — ver esas entradas).
 3. ~~**BOT-008** — Re-run completo del sweep~~ `DONE` — re-ejecutado con el motor corregido: ESCENARIO A marginal (edge real pero delgado, PF~1.05, dos configuraciones — `cfg_1260`/`cfg_1278` — positivas en USD en los 3 sub-períodos), ver `docs/reports/BOT-008_rerun_post_BOT043.md`. Próximo paso recomendado (no ejecutado): validación Out-of-Sample genuina sobre esas dos configuraciones, mismo criterio que `VALIDATION-D1-OOS` — no se abre automáticamente otro sweep ni se cambia producción.
 
    **Con BOT-008 cerrado, la línea de investigación/optimización sobre este espacio de parámetros queda CERRADA** (ver "DECISIÓN — Cierre temporal de optimización histórica" al final del archivo) — `cfg_1260`/`cfg_1278` y la hipótesis D1 quedan congeladas para `VALIDATION-CONFIG-OOS`/`VALIDATION-D1-OOS` (futuro, con datos OOS posteriores al 2026-09-15, no ejecutar todavía — misma barrera de datos que bloquea BOT-024.3). El proyecto retoma la secuencia funcional/operativa ya acordada — **próxima US activa: BOT-032** (punto 4 abajo).
@@ -375,7 +376,7 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
 - **Versión objetivo:** sin definir
 - **Descripción:** El pedido original era simplemente normalizar el score aditivo actual (`total=+2`, `-1`, etc.) a una escala tipo `Signal Score: 82/100`. El diseño evolucionó desde entonces (ver subtareas abajo): **antes de definir cualquier fórmula de normalización o peso, primero se está investigando qué dimensiones tienen evidencia suficiente para formar el futuro `Signal Quality`.** La arquitectura conceptual actualmente considerada (todavía diseño/investigación, nada implementado) es:
   - **Momentum** — velocidad/persistencia/aceleración del movimiento de precio en `limit_created_bar` (BOT-024.2/BOT-024.3).
-  - **Alignment** — si la dirección del trade está a favor o en contra del contexto direccional de mayor plazo (D1) (BOT-047, sucesor conceptual de BOT-045/BOT-046).
+  - **Alignment** — si la dirección del trade está a favor o en contra del contexto direccional de mayor plazo (D1) (BOT-047, feature padre, sucesora conceptual de BOT-045/BOT-046).
   - **Structure** — estructura técnica del precio (sin investigación propia todavía).
   - **Economics** — RR, costos, spread, stop (parcialmente cubierto hoy por el factor CVP de BOT-023).
   - **Context** — sesión, hora, régimen (diagnosticado parcialmente en BOT-045, sin dimensión formal todavía).
@@ -386,7 +387,10 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
   - `BOT-024.1` `DONE` — auditoría y evaluación predictiva de Divergencia RSI (insumo de diagnóstico, no es Momentum en sí).
   - `BOT-024.2` `DONE` — Momentum Feature Discovery XAU (BTC bloqueado).
   - `BOT-024.3` `BLOCKED` — Momentum Out-of-Sample Validation (esperando histórico genuinamente nuevo).
-  - `BOT-047` `TODO/NEXT` — D1 Alignment Feature Discovery.
+  - `BOT-047` `IN PROGRESS / RESEARCH` — D1 Alignment (feature padre, ver "Convención para features experimentales" más abajo):
+    - `BOT-047.1` `DONE` — D1 Alignment Feature Discovery.
+    - `BOT-047.2` `BLOCKED` — D1 Alignment Definition Freeze (espera revisión humana de BOT-047.1).
+    - `BOT-047.3` `BLOCKED` — D1 Alignment Out-of-Sample Validation (depende de BOT-047.2 + histórico OOS futuro).
 
   BOT-024 en sí (la definición formal de Signal Quality 0–100) sigue `TODO` — no se cierra hasta tener evidencia suficientemente validada (OOS) de al menos Momentum y Alignment.
 
@@ -449,18 +453,62 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
 - **Notas técnicas:** Debe seguir siendo una capa que se pueda desactivar — no reemplazar la lógica base de señales (`engine.py`/`live_signal.py`).
 - **Dependencias:** BOT-023, BOT-024 (para que el umbral tenga una escala estable antes de fijar un default razonable).
 
-### BOT-047 — D1 Alignment Feature Discovery
+### BOT-047 — D1 Alignment
+- **Categoría:** Scoring / Investigación
+- **Estado:** IN PROGRESS / RESEARCH (feature padre — refleja el estado agregado de sus subtareas, ver abajo; no se marca `DONE` hasta tener OOS validado)
+- **Prioridad:** HIGH
+- **Incorporado:** 2026-09-19
+- **Versión objetivo:** N/A — investigación offline
+- **Descripción:** Feature padre de `BOT-024` (Signal Quality), dimensión `Alignment` — **¿la dirección propuesta por el trade está alineada o en contra del contexto direccional de mayor plazo?** — explícitamente independiente de Momentum (`BOT-024.2`/`BOT-024.3`, que responde una pregunta distinta: ¿con qué fuerza se está moviendo el mercado alrededor del nacimiento del LIMIT?). D1 NO debe utilizarse para modificar ni "mejorar" Momentum. Ambas siguen siendo dimensiones independientes de `Signal Quality = Momentum + Alignment + Structure + Economics + Context`.
+  - **Relación con BOT-045/BOT-046:** reutiliza esos hallazgos como antecedente/contexto histórico (no se reinterpretan ni se descartan), pero **no asume** que la definición anterior de `aligned_with_d1` (BOT-045/046) sea necesariamente la definición final de la dimensión Alignment de Signal Quality. BOT-045/046 preguntaban "¿la hipótesis D1 tiene robustez?"; BOT-047 amplía la pregunta a "¿cómo debemos representar formalmente Alignment?". **`BOT-046` permanece `DONE` sin cambios — esta es una ID nueva, no una reapertura ni un `BOT-046.1`.**
+  - **Estructura interna (convención de features experimentales, ver regla permanente más abajo):** esta es la primera feature organizada bajo la subestructura `.1/.2/.3` — ver `BOT-047.1`, `BOT-047.2`, `BOT-047.3` a continuación.
+- **Dependencias:** BOT-045, BOT-046 (antecedentes, reutilizados como contexto, no reinterpretados).
+- **Subtareas:**
+  - `BOT-047.1` `TODO/NEXT` — Feature Discovery.
+  - `BOT-047.2` `BLOCKED` — Definition Freeze (depende de BOT-047.1).
+  - `BOT-047.3` `BLOCKED` — OOS Validation (depende de BOT-047.2 + histórico OOS futuro).
+
+### BOT-047.1 — D1 Alignment Feature Discovery
 - **Categoría:** Scoring / Investigación
 - **Estado:** TODO
 - **Prioridad:** HIGH
 - **Incorporado:** 2026-09-19
 - **Versión objetivo:** N/A — investigación offline
-- **Descripción:** Subtarea de `BOT-024` (Signal Quality), dimensión `Alignment`. Objetivo: descubrir qué variables observables de temporalidad D1 representan de forma útil y causal el concepto de Alignment — **si la dirección propuesta por el trade está alineada o en contra del contexto direccional de mayor plazo** — explícitamente separado de Momentum (`BOT-024.2`/`BOT-024.3`). No debe asumir de antemano reglas como "precio > EMA200 D1 = bullish" ni "LONG + precio sobre EMA = buena señal" — primero debe hacerse feature discovery, igual que se hizo con Momentum. Variables candidatas iniciales a estudiar (no son requisitos ni reglas finales): distancia precio↔EMA D1 normalizada, pendiente de EMA D1, retorno D1 reciente, estructura D1, RSI D1 como estado direccional, LONG/SHORT explícito.
+- **Descripción:** Subtarea de `BOT-047` (D1 Alignment). Objetivo: descubrir qué variables observables de temporalidad D1 representan de forma útil y causal el concepto de Alignment. No debe asumir de antemano reglas como "precio > EMA200 D1 = bullish" ni "LONG + precio sobre EMA = buena señal" — primero debe hacerse feature discovery, igual que se hizo con Momentum (`BOT-024.2`). Variables candidatas iniciales a estudiar (no son requisitos ni reglas finales): distancia precio↔EMA D1 normalizada, pendiente de EMA D1, retorno D1 reciente, estructura D1, RSI D1 como estado direccional, LONG/SHORT explícito.
   - **Causalidad D1:** debe estudiarse cuidadosamente la diferencia entre el D1 ya cerrado (anterior) y el D1 en formación conocido hasta `limit_created_bar` — nunca usar el cierre futuro del día de la entrada. Mismo estándar de rigor causal que `BOT-024.2` (congelado en `limit_created_bar`, sin lookahead).
-  - **Relación con BOT-045/BOT-046:** reutiliza esos hallazgos como antecedente/contexto histórico (no se reinterpretan ni se descartan), pero **no asume** que la definición anterior de `aligned_with_d1` (BOT-045/046) sea necesariamente la definición final de la dimensión Alignment de Signal Quality. BOT-045/046 preguntaban "¿la hipótesis D1 tiene robustez?"; BOT-047 amplía la pregunta a "¿cómo debemos representar formalmente Alignment?". **`BOT-046` permanece `DONE` sin cambios — esta es una ID nueva, no una reapertura ni un `BOT-046.1`.**
-  - **Restricciones (igual que BOT-024.2):** offline, discovery, read-only respecto a producción. No implementa score, pesos, gating, cambios de estrategia, cambios de producción, ni optimización de parámetros.
-  - **Futuro OOS:** cualquier hipótesis que salga de BOT-047 deberá pasar por una validación Out-of-Sample (misma disciplina que `BOT-024.3`) antes de formar parte de Signal Quality — no se asigna todavía una ID para esa etapa futura, no existe trabajo ejecutable aún.
-- **Dependencias:** BOT-045, BOT-046 (antecedentes, reutilizados como contexto, no reinterpretados).
+  - **Restricciones (igual que BOT-024.2):** offline, discovery, read-only respecto a producción. No implementa score, pesos, gating, cambios de estrategia, cambios de producción, ni optimización de parámetros. No hacer grid search de combinaciones, no optimizar thresholds, no seleccionar una regla porque maximiza el beneficio histórico — cada feature se estudia individualmente mediante distribuciones/bins (N, Win Rate, expectancy, PF, P&L/R, separado en ALL/LONG/SHORT), prestando especial atención a si la relación es monotónica, no lineal, inestable o asimétrica LONG/SHORT. Interacciones (`Momentum × D1 Alignment`, `Divergence × D1 Alignment`, `LONG/SHORT × D1 Alignment`) solo exploratorias, sin construir reglas combinadas, score, pesos ni gate.
+  - **Vector inicial de features a estudiar (no son reglas finales ni componentes obligatorios):**
+    - Posición respecto a EMA D1, normalizada por ATR: `dist_ema20_atr`, `dist_ema50_atr`, `dist_ema200_atr` (`(price - EMA) / ATR14`).
+    - Pendiente de EMA D1: `ema20_slope`, `ema50_slope`, `ema200_slope` — debe permitir distinguir precio encima/debajo de una EMA ascendente/descendente; normalización exacta a documentar al ejecutar.
+    - Retorno D1 reciente: `ret_1d`, `ret_3d`, `ret_5d`, `ret_10d` — sin asumir de antemano cuál horizonte es superior.
+    - RSI D1: `rsi14`, `rsi14_delta` — estudiado como estado/contexto, sin asumir automáticamente que >70 es malo, <30 es bueno, o >50/<50 define bullish/bearish.
+    - Estructura D1 (HH/HL/LH/LL): representación causal y objetiva, evitando estructura subjetiva/visual. Cuidado especial con pivots/swings/ZigZag — si un swing necesita barras futuras para confirmarse, su timestamp de disponibilidad debe ser el de confirmación, nunca la barra histórica donde ocurrió visualmente. Nunca introducir look-ahead para conseguir una estructura más limpia.
+    - ATR/volatilidad: `atr14`, `atr14_pct` (o normalización equivalente) — como contexto/normalización, no se asume automáticamente que sea componente de Alignment (podría terminar perteneciendo a `Context`).
+  - **Representación RAW + TRADE-RELATIVE:** las variables direccionales relevantes deben conservarse en ambas formas. RAW = valor original de la feature (ej. `dist_ema50_atr`). Trade-relative = transformación respecto a la dirección del trade (`direction_sign = +1` LONG, `-1` SHORT; ej. `aligned_dist_ema50 = direction_sign * dist_ema50_atr`, donde positivo = a favor del trade, negativo = en contra). RAW nunca se elimina — es necesaria para descubrir asimetrías LONG/SHORT que la vista trade-relative por sí sola no muestra. Análisis separados en ALL / LONG / SHORT.
+  - **Causalidad D1_CLOSED vs. D1_FORMING (requisito central):** deben estudiarse como universos/representaciones explícitamente separados, sin mezclarlos silenciosamente en dataset, columnas, análisis ni reporte. `D1_CLOSED` = última vela D1 completamente cerrada antes de `limit_created_bar`. `D1_FORMING` = estado del D1 en curso usando exclusivamente información disponible hasta el instante exacto de `limit_created_bar` (ej. LIMIT nacido el martes a las 10:35 → solo Open del martes, High/Low acumulados hasta 10:35, precio/Close provisional a esa hora; nunca High/Low/Close posteriores). Nunca usar el OHLC final del día como sustituto de D1_FORMING — sería look-ahead. Indicadores (EMA, RSI, etc.) aplicados sobre D1_FORMING deben reconstruirse causalmente, no leerse ya calculados sobre el cierre diario final (ej. conceptualmente `EMA_forming(t) = EMA_previous_closed + alpha * (current_price(t) - EMA_previous_closed)`, con `current_price(t)` limitado a lo disponible en `limit_created_bar`); RSI_FORMING requiere una reconstrucción causal equivalente. Metodología exacta y control explícito contra look-ahead a documentar y validar cuando se ejecute esta tarea.
+  - **Activos:** XAUUSD/XAUUSDc prioritario (ver "DECISIÓN — XAUUSD como activo prioritario" al final del archivo). BTC secundario/bloqueado mientras no exista dataset/configuración fiable (mismo bloqueo documentado en BOT-024.2).
+- **Dependencias:** BOT-047 (feature padre), BOT-045, BOT-046 (antecedentes, reutilizados como contexto, no reinterpretados).
+
+### BOT-047.2 — D1 Alignment Definition Freeze
+- **Categoría:** Scoring / Investigación
+- **Estado:** BLOCKED
+- **Prioridad:** HIGH
+- **Incorporado:** 2026-09-20
+- **Versión objetivo:** N/A — investigación offline, sin release de producción
+- **Motivo del bloqueo:** depende de completar y revisar `BOT-047.1`.
+- **Descripción:** Sucesora de `BOT-047.1` dentro de la feature padre `BOT-047`. Objetivo: usar exclusivamente la evidencia del discovery de BOT-047.1 (no una búsqueda nueva) para definir y congelar formalmente una hipótesis candidata de Alignment: features seleccionadas, representación matemática, tratamiento RAW vs. trade-relative, tratamiento LONG/SHORT, `D1_CLOSED` vs. `D1_FORMING`, normalizaciones, definición de Alignment, thresholds (únicamente si la evidencia realmente los justifica) y la metodología exacta de la futura validación OOS. **No es un nuevo discovery** — no debe seguir buscando features hasta encontrar una combinación ganadora; su propósito es convertir la evidencia de BOT-047.1 en una definición concreta y falsable. Resultado esperado: una definición congelada de Alignment que pueda llevarse a datos genuinamente nuevos sin modificación. No implementa todavía score, pesos, gate ni producción.
+- **Dependencias:** BOT-047.1.
+
+### BOT-047.3 — D1 Alignment Out-of-Sample Validation
+- **Categoría:** Scoring / Investigación / Validación
+- **Estado:** BLOCKED
+- **Prioridad:** HIGH
+- **Incorporado:** 2026-09-20
+- **Versión objetivo:** N/A — investigación offline, sin release de producción
+- **Motivo del bloqueo:** (1) depende de `BOT-047.2`; (2) requiere suficiente histórico genuinamente nuevo posterior al cutoff utilizado por BOT-047.1.
+- **Descripción:** Validar exclusivamente la definición congelada en BOT-047.2 sobre datos que NO participaron en BOT-047.1 (discovery, selección de features, definición de thresholds, diseño de Alignment). No recalcular thresholds usando OOS, no agregar features nuevas, no eliminar features porque fallen, no cambiar períodos EMA/RSI/ATR, no optimizar LONG y SHORT por separado después de ver OOS, no cambiar CLOSED/FORMING después de observar resultados, no hacer feature fishing, no redefinir Alignment utilizando los resultados OOS. Si la hipótesis falla, debe documentarse como resultado válido — cualquier modificación posterior es una hipótesis/versión nueva que requiere nueva validación (ej. `BOT-047.4` si la evidencia lo justifica, ver "Convención para features experimentales").
+  - **Relación con `VALIDATION-D1-OOS` (no se fusionan, son experimentos distintos):** `VALIDATION-D1-OOS` valida exclusivamente la hipótesis histórica ya congelada de BOT-045/BOT-046 (`aligned_with_d1`, sin modificar esa definición). `BOT-047.3` valida la definición **nueva** y formal de Alignment que resulte de BOT-047.1 → BOT-047.2. Ambos tickets coexisten de forma independiente; ver nota cruzada equivalente en `VALIDATION-D1-OOS` más abajo.
+- **Dependencias:** BOT-047.2.
 
 ### BOT-044 — `scoring.py::cvp_score()` convierte comisión a precio con `contract_size` (mismo patrón que BOT-043, en código que corre en vivo)
 - **Categoría:** Scoring
@@ -655,7 +703,7 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
 Antes de implementar cualquier funcionalidad nueva importante:
 
 1. Revisar este `BACKLOG.md`.
-2. Crear o identificar el ID correspondiente (siguiente disponible: **BOT-048**).
+2. Crear o identificar el ID correspondiente (siguiente ID **principal** disponible: **BOT-048**; si la tarea es una feature experimental que requiere discovery estadístico, considerar la subestructura `.1/.2/.3` — ver "Convención para features experimentales" más abajo — en vez de un nuevo ID principal).
 3. Cambiarlo a `IN PROGRESS` al comenzar.
 4. Implementar.
 5. Correr los tests correspondientes (ver los scripts `test_*.py` de cada módulo — no hay `pytest` instalado en el entorno, se corren como script plano: `python strategy/test_engine.py`, etc.).
@@ -680,6 +728,39 @@ DIAGNÓSTICO → HIPÓTESIS → PRUEBA CONTROLADA → ROBUSTEZ → VALIDACIÓN �
 ```
 
 Evitar explícitamente: "agregar varios indicadores/filtros simultáneamente y quedarse con la combinación que dé mayor beneficio" — el objetivo es minimizar overfitting y poder atribuir cualquier mejora a una causa concreta, no a la mejor combinación encontrada por fuerza bruta. BOT-045 es el primer ítem que sigue esta regla explícitamente: cubre únicamente la etapa de Diagnóstico/Hipótesis, no autoriza por sí solo pasar a Prueba controlada ni a las etapas siguientes.
+
+La línea de investigación de Alignment (`BOT-047.1 → BOT-047.2 → BOT-047.3`) es consistente con esta misma regla a nivel específico: `BOT-047.1` = Discovery, `BOT-047.2` = Definition Freeze (equivalente a congelar la Hipótesis), `BOT-047.3` = OOS Validation. Completar `BOT-047.3` no implica que Alignment se incorpore automáticamente a producción — cualquier cambio en `Signal Quality`/`BOT-024` requiere una etapa posterior explícita dentro del diseño global de esa US, respetando igualmente esta regla experimental.
+
+---
+
+## Regla permanente — convención de IDs para features experimentales (desde 2026-09-20)
+
+Cuando una feature/capacidad requiera discovery estadístico antes de poder incorporarse al sistema, usar la subestructura decimal:
+
+```text
+BOT-XXX — Feature / capacidad principal
+ ├─ BOT-XXX.1 — Feature Discovery
+ ├─ BOT-XXX.2 — Definition Freeze
+ └─ BOT-XXX.3 — OOS Validation
+```
+
+**`BOT-XXX` (feature padre):** representa la capacidad conceptual completa (ej. D1 Alignment, Structure, Economics, Context, o cualquier futura feature que requiera investigación estadística). Su estado refleja el agregado de sus subtareas — no se marca `DONE` hasta tener evidencia suficientemente validada (OOS) de la hipótesis final.
+
+**`BOT-XXX.1` — Feature Discovery:** explorar features candidatas, medir relaciones, identificar comportamiento, estudiar estabilidad, estudiar LONG/SHORT, detectar posibles asimetrías, evitar optimización prematura. No congela todavía la definición final.
+
+**`BOT-XXX.2` — Definition Freeze:** revisar la evidencia del Discovery, seleccionar variables, definir matemáticamente la feature, decidir transformaciones, definir thresholds si realmente están justificados, congelar la hipótesis antes de OOS. Después de este punto no se debe utilizar el futuro OOS para rediseñar silenciosamente la misma hipótesis.
+
+**`BOT-XXX.3` — OOS Validation:** validar la definición congelada sobre datos genuinamente nuevos. No reoptimizar, no cambiar thresholds, no agregar ni eliminar features, no ajustar parámetros después de ver OOS, no hacer feature fishing. Si falla, el fallo debe registrarse como resultado experimental válido, no descartarse en silencio.
+
+**Esta convención NO es obligatoria para todo el backlog.** Se usa específicamente para features experimentales que necesitan discovery estadístico. Bugs, fixes, cambios de UI, infraestructura, packaging, documentación, kill switches, mejoras operativas simples, o cualquier tarea cuya implementación ya está claramente definida, continúan usando un ID principal normal (`BOT-XXX`) sin subestructura.
+
+**La secuencia `.1/.2/.3` es el ciclo estándar, no un límite.** Si después del OOS aparece una hipótesis materialmente nueva, se puede crear `BOT-XXX.4` (o posteriores) — documentando claramente que constituye una nueva hipótesis, nuevo experimento, nueva validación o revisión posterior. No se reutilizan `.1/.2/.3` para alterar retroactivamente experimentos ya cerrados.
+
+**Los IDs decimales NO consumen IDs principales nuevos.** Ejemplo: `BOT-047`, `BOT-047.1`, `BOT-047.2`, `BOT-047.3` siguen dejando `BOT-048` como el siguiente ID principal disponible.
+
+**Esta convención se adopta a partir de ahora (2026-09-20) y no reestructura retroactivamente tickets históricos.** No se renumeran `BOT-045`, `BOT-046` ni otros tickets ya cerrados. `BOT-024` ya usaba subtareas antes de esta regla formal y conserva su numeración histórica sin cambios. `BOT-047` (D1 Alignment) es la primera feature organizada formalmente bajo esta convención.
+
+Esta convención es una organización **interna** del ciclo de una feature experimental y no sustituye la regla experimental general de arriba (`DIAGNÓSTICO → HIPÓTESIS → PRUEBA CONTROLADA → ROBUSTEZ → VALIDACIÓN → CAMBIO EN PRODUCCIÓN`). Completar `BOT-XXX.3` no autoriza automáticamente un cambio de producción.
 
 ---
 
@@ -721,6 +802,10 @@ Evaluar nuevamente si:
 No ejecutar hasta disponer de una cantidad suficiente de datos posteriores al **2026-09-15** para que la validación tenga una muestra razonable.
 
 Este ticket es exclusivamente de **validación futura** y no autoriza ninguna modificación de producción.
+
+### Nota cruzada — no confundir con BOT-047.3
+
+`VALIDATION-D1-OOS` = validación OOS de la hipótesis histórica congelada `BOT-045`/`BOT-046` (`aligned_with_d1`, sin modificar esa definición). `BOT-047.3` = validación OOS de la nueva dimensión formal de Alignment que resulte de `BOT-047.1 → BOT-047.2`. Son experimentos conceptualmente diferentes y coexisten — este ticket no se elimina, no se convierte en BOT-047.3 ni se fusiona con él.
 
 ---
 
