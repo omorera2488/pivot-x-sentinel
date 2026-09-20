@@ -1,0 +1,8 @@
+feature,rho_vs_pnl_r,rho_vs_primary,classification,reason
+closed_ema200_slope,0.14929486348759904,1.0,PRIMARY,mayor |rho| vs pnl_r del universo evaluado
+closed_ema50_slope,0.14402972178389403,0.8593262702233977,REDUNDANT,|rho| con closed_ema200_slope = +0.859 (>=0.8) -- misma senal subyacente
+closed_dist_ema200_atr,0.14246139336757863,0.9708839038042062,REDUNDANT,|rho| con closed_ema200_slope = +0.971 (>=0.8) -- misma senal subyacente
+closed_dist_ema50_atr,0.12813009010269774,0.8124368467889839,REDUNDANT,|rho| con closed_ema200_slope = +0.812 (>=0.8) -- misma senal subyacente
+closed_ema20_slope,0.1170860771097592,0.7347003175802385,SECONDARY / ORTHOGONAL,"|rho| con closed_ema200_slope = +0.735 (<0.8, no redundante) y |rho| vs pnl_r = +0.117 (>=0.05)"
+closed_ret_10d,0.10700137093317251,0.5401347394146434,SECONDARY / ORTHOGONAL,"|rho| con closed_ema200_slope = +0.540 (<0.8, no redundante) y |rho| vs pnl_r = +0.107 (>=0.05)"
+closed_rsi14,0.1013239326309737,0.6995957643055825,SECONDARY / ORTHOGONAL,"|rho| con closed_ema200_slope = +0.700 (<0.8, no redundante) y |rho| vs pnl_r = +0.101 (>=0.05)"
