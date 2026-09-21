@@ -654,9 +654,9 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
   - **Estructura interna:** sigue la misma subestructura `.1/.2/.3` — ver `BOT-050.1` a continuación.
 - **Dependencias:** BOT-024 (marco conceptual de Signal Quality), BOT-045 (antecedente descriptivo, reutilizado sin reinterpretar).
 - **Subtareas:**
-  - `BOT-050.1` `TODO` — Context Feature Discovery (no iniciada).
+  - `BOT-050.1` `TODO — NEXT ACTIVE` — Context Feature Discovery (no iniciada — siguiente trabajo activo del proyecto tras el cierre de `BOT-049`).
   - `BOT-050.2` `TODO` — Context Definition Freeze (no iniciada).
-  - `BOT-050.3` `TODO — PENDING / WAITING GENUINE OOS` — Context OOS Validation (no iniciada).
+  - `BOT-050.3` `TODO — PENDING / WAITING GENUINE OOS` — Context OOS Validation (no iniciada; podría pasar a `NO CONTRACT TO VALIDATE` si `BOT-050.2` concluyera `NO_VALID_CONTEXT_FREEZE`, ver esa entrada).
 
 ### BOT-050.1 — Context Feature Discovery
 - **Categoría:** Scoring / Investigación
@@ -682,7 +682,7 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
 - **Prioridad:** HIGH
 - **Incorporado:** 2026-09-20
 - **Versión objetivo:** N/A — investigación offline, sin release de producción
-- **Descripción:** Subtarea de `BOT-050`, sucesora de `BOT-050.2`. Validará la definición congelada de Context sobre histórico genuinamente posterior al corte OOS vigente (2026-09-15) — mismo criterio que `BOT-024.3`/`BOT-047.3`/`BOT-048.3`/`BOT-049.3`. No se ejecuta hasta que exista ese histórico y `BOT-050.2` esté `DONE`.
+- **Descripción:** Subtarea de `BOT-050`, sucesora de `BOT-050.2`. Validará la definición congelada de Context sobre histórico genuinamente posterior al corte OOS vigente (2026-09-15) — mismo criterio que `BOT-024.3`/`BOT-047.3`/`BOT-048.3` (todos con un contrato ya congelado, esperando solo datos). No se ejecuta hasta que exista ese histórico y `BOT-050.2` esté `DONE` **con un contrato válido** — si `BOT-050.2` concluyera `NO_VALID_CONTEXT_FREEZE` (análogo a `BOT-049.2`), este ítem pasaría a `NO CONTRACT TO VALIDATE` como `BOT-049.3`, no a `WAITING GENUINE OOS`.
 - **Dependencias:** BOT-050.2.
 
 ### BOT-051 — Signal Quality Integration
@@ -696,6 +696,21 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
   - **Economics (actualizado 2026-09-21, ver `BOT-049.2`):** `BOT-049` cerró con `NO_VALID_ECONOMICS_FREEZE` — no existe una representación numérica propia de Economics para integrar. `BOT-051` debe tratar Signal Quality como potencialmente **4 dimensiones con representación propia** (Momentum, Alignment, Structure, Context) más el factor CVP ya existente (que absorbió la fricción de costos que Economics habría aportado) y `origin_retracement_frac` (cross-factor Structure×RR, sin dueño limpio) — no como "4 de 5 completas, falta Economics". Si una futura tarea (nueva ID) redefine Economics tras un cambio de diseño de estrategia, `BOT-051` deberá revisarse para incorporarla.
 - **Dependencias:** `BOT-024.2`/`BOT-024.3` (Momentum), `BOT-047` (Alignment), `BOT-048` (Structure), `BOT-049` (Economics, `DONE — NO_VALID_ECONOMICS_FREEZE`, sin representación que integrar), `BOT-050` (Context) — conceptualmente depende de las restantes cuatro, aunque el enunciado del roadmap no exige que todas tengan OOS validado antes de que `BOT-051` pueda empezar a diseñarse (a definir cuando se aborde).
 - **Relación con `BOT-025`:** `BOT-025` (gate configurable de scoring) queda **downstream** de esta tarea — la secuencia acordada es `Factor Discovery/Freeze (BOT-047/048/049/050) → BOT-051 (Signal Quality Integration) → BOT-025 (gate/decisión de ejecución) → posible gate/ejecución futura`. `BOT-025` puede cambiar de diseño según lo que `BOT-051` produzca; no se marca `DONE`, `CANCELLED` ni se reinterpreta aquí — ver esa entrada.
+
+### Pendientes — Análisis y validación posterior (Signal Quality)
+*(Agregado 2026-09-21 al reconciliar el backlog tras el cierre de `BOT-049`/`BOT-049.2` — índice de lo que sigue abierto en esta línea de investigación, para que no se pierda de vista al pasar a `BOT-050`. No son tareas nuevas, todas referencian IDs ya existentes.)*
+
+- **A. OOS genuino pendiente (no cancelado — esperando datos, no reinterpretación):** tres definiciones ya congeladas siguen esperando histórico genuinamente posterior al **2026-09-15** para poder validarse Out-of-Sample — **ninguna se da por válida todavía, ni se asume que la muestra ya alcanza**:
+  - `BOT-024.3` — Momentum OOS, hipótesis `roc_atr_3`/`rsi_delta_3`/`ema_slope_atr_5`/`atr_pct` (`BOT-024.2`). `BLOCKED`.
+  - `BOT-047.3` — D1 Alignment OOS, contrato Structural Alignment Consensus (`BOT-047.2.3`, `FREEZE_READY`). `READY / WAITING FOR OOS`.
+  - `BOT-048.3` — Structure OOS, contrato `origin_dist_atr` (`BOT-048.2`, `ORIGIN_ONLY_FREEZE`). `PENDING / WAITING OOS`.
+  - **Distinto de `BOT-049.3`** (`NO CONTRACT TO VALIDATE` — no hay definición Economics que someter a OOS, no es un problema de datos). Retomar las tres de arriba en cuanto exista suficiente histórico nuevo — no antes.
+- **B. `distance_to_limit_atr` / execution quality (hallazgo a analizar más adelante, sin US propia todavía):** `BOT-049.1`/`BOT-049.2` encontraron que `distance_to_limit_atr` (distancia entre el precio y el LIMIT al crearlo, normalizada por ATR) predice fuertemente `P(fill)` (ρ=−0.401) pero débilmente `pnl_r|filled` (ρ=+0.062) — pertenece conceptualmente a **fill probability / Time-to-Fill / execution quality**, no a Economics. No se abre una User Story principal nueva solo por esto; queda registrado como hallazgo pendiente de una futura investigación de ejecución/order lifecycle si se decide abrir esa línea. Elementos a recuperar si se retoma: `P(fill | distance_to_limit_atr)` (fill rate 95.6%→47.4% por quintil), distribución de `time_to_fill_bars | filled` (mediana=1 barra, 92.6% en ≤3 barras, sin convertir en gate), distribución de expiración/no-fill. Ver `reports/BOT-049.1-ECONOMICS-FEATURE-DISCOVERY.md` sección 8 y `reports/BOT-049.2-ECONOMICS-DEFINITION-FREEZE.md` sección 5.
+- **C. CVP y futura integración:** CVP (`BOT-023`/`strategy/scoring.py::cvp_score()`) retiene ownership completo de la fricción/costo (`BOT-049.2` sección 4). Cuando se llegue a `BOT-051`: **no** duplicar `breakeven_pct`, **no** reintroducir `spread_over_risk`/`rr_effective_net` como evidencia independiente, **no** contar Economics + CVP dos veces. Nota de diseño futuro (no ejecutar ahora): si se necesita una representación continua de la fricción sin gate de `aciertos_pct`, la vía correcta es exponer/refactorizar el subcálculo interno de `cvp_score()`, no implementar una segunda fórmula paralela.
+- **D. Economics podría reabrirse solo bajo cambio estructural (nota futura, no tarea activa):** `BOT-049` podría requerir una nueva investigación si en el futuro (i) el stop deja de estar mecánicamente ligado a `origin_level`, (ii) `rr` deja de ser fijo/degenerado, o (iii) la arquitectura de costos/CVP cambia materialmente. Cualquier reapertura usa una **ID nueva** (p. ej. `BOT-049.4`) — nunca reinterpreta `BOT-049.2` en silencio.
+- **E. Context — resultado abierto, no asumido:** `BOT-050.1` (siguiente trabajo activo) puede terminar en un contrato válido, en candidatos redundantes, o en `NO_VALID_CONTEXT_FREEZE` (análogo a `NO_VALID_ECONOMICS_FREEZE`) — no se asume de antemano que Context necesariamente formará parte del score final.
+- **F. Signal Quality Integration (`BOT-051`) no exige cinco representaciones numéricas obligatorias:** tabla de estado actual — Momentum (`BOT-024.2` `DONE`, OOS `BLOCKED`), Alignment (`BOT-047.2.3` `FREEZE_READY`, OOS `READY/WAITING`), Structure (`BOT-048.2` `ORIGIN_ONLY_FREEZE`, OOS `PENDING/WAITING`), Economics (`BOT-049.2` `NO_VALID_ECONOMICS_FREEZE` — **sin representación**), Context (pendiente, `BOT-050`). La integración futura debe usar únicamente los factores que sobrevivan sus propios contratos/validaciones — sin pesos, score 0–100, `confidence` ni gate definidos todavía (ver `BOT-051`).
+- **G. `BOT-024`/`BOT-025`:** sus estados siguen siendo consistentes con el diseño actual (`TODO` ambos) — no se congelan ni se cancelan prematuramente; su diseño final sigue dependiendo de completar los factores restantes y de la integración de `BOT-051` (ver esas entradas).
 
 ### BOT-044 — `scoring.py::cvp_score()` convierte comisión a precio con `contract_size` (mismo patrón que BOT-043, en código que corre en vivo)
 - **Categoría:** Scoring
