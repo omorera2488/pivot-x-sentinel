@@ -1,0 +1,238 @@
+{
+  "schema_name": "SignalQualityVectorV1",
+  "schema_version": "1.0.0",
+  "definition_status": "DEFINITION_FROZEN",
+  "oos_validated": false,
+  "decision": "SIGNAL_QUALITY_VECTOR_V1_FREEZE",
+  "produced_by": "BOT-051.2",
+  "supersedes": "BOT-051.1 (VECTOR_FIRST architecture decision, momentum slot was PENDING_DEFINITION)",
+  "frozen_date": "2026-09-21",
+
+  "vector_schema": {
+    "description": "Typed structure a Signal Quality v1 observation must conform to. Two independent implementations reading the same LIMIT at the same limit_created_bar must produce an identical object.",
+    "fields": {
+      "schema_version": { "type": "string", "const": "1.0.0" },
+      "observed_at_bar": { "type": "integer", "description": "limit_created_bar index (== signal_bar == born_bar)" },
+      "observed_at_time_utc": { "type": "datetime", "description": "UTC timestamp of limit_created_bar" },
+      "direction": { "type": "enum", "values": ["LONG", "SHORT"], "required": true, "role": "metadata, not a 5th quality factor" },
+      "momentum": { "type": "FactorObservation<float>" },
+      "alignment": { "type": "FactorObservation<AlignmentState>" },
+      "structure": { "type": "FactorObservation<float>" },
+      "context": { "type": "FactorObservation<Weekday>" }
+    },
+    "factor_observation_wrapper": {
+      "name": "FactorObservation<T>",
+      "fields": {
+        "status": { "type": "enum", "values": ["AVAILABLE", "UNAVAILABLE"] },
+        "value": { "type": "T | null", "rule": "present and non-null iff status == AVAILABLE; null iff status == UNAVAILABLE. Never a numeric sentinel (never 0, never an average)." }
+      },
+      "canonical_semantics_decision": "SINGLE source of truth per factor: the wrapper's status is DERIVED from each factor's own frozen contract, never a second independent judgment. For Alignment specifically, whose own frozen enum (BOT-047.2.3) already includes UNAVAILABLE as one of its 6 states, the wrapper's status is a deterministic 1:1 projection (status=UNAVAILABLE iff raw_state==\"UNAVAILABLE\"; status=AVAILABLE for the other 5 substantive states, value=raw_state). This gives every consumer a uniform status field to check without special-casing Alignment's enum, while the enum itself remains the untouched source of truth."
+    }
+  },
+
+  "metadata": {
+    "direction": {
+      "type": "enum",
+      "values": ["LONG", "SHORT"],
+      "required": true,
+      "role": "metadata, never scored, never a 5th quality factor",
+      "direction_conditional_factors": {
+        "alignment": "AGAINST_CONFIRMED is the worst state historically for LONG (ExpR=-0.452) but near-best for SHORT (ExpR=+0.061) -- BOT-047.2.3",
+        "context": "Friday effect significant in LONG/ALL, not significant in SHORT -- BOT-050.2",
+        "structure": "significant U-shape at both extremes in LONG; not significant in SHORT -- BOT-048.2",
+        "momentum": "effect asymmetric: Q1 (most-against) Exp$=-3.10 LONG vs -0.21 SHORT -- BOT-024.4 section 8. Formula itself is symmetric by construction."
+      }
+    }
+  },
+
+  "factors": {
+    "momentum": {
+      "source_contract": "BOT-024.4",
+      "source_status": "FREEZE_READY",
+      "canonical_feature": "roc_atr_3",
+      "representation": "RAW_CONTINUOUS",
+      "formula": "direction * (close[b] - close[b-3]) / atr_wilder(high,low,close,14)[b]",
+      "semantic_definition": "Short-horizon directional impulse (3 M5 bars / 15 minutes), ATR14-normalized, signed by trade direction, observed at limit_created_bar.",
+      "not_included_in_v1": [
+        "rsi_delta_3 (CONTROL_ONLY, rho=+0.935 vs roc_atr_3 -- same phenomenon, not a second vote)",
+        "ema_slope_atr_5 (UNRESOLVED/MOMENTUM-SECONDARY -- distinct, not redundant, but unexplained pattern)",
+        "atr_pct (OWNED_BY_OTHER_FACTOR -- Context/Volatility)",
+        "Divergence NONE/ALIGNED/OPPOSED (CROSS_FACTOR_ONLY -- own identity, BOT-023)",
+        "fill-rate relationship (OWNED_BY_OTHER_FACTOR -- execution/fill-quality)"
+      ],
+      "availability": {
+        "unavailable_reason": "warm-up: fewer than 3 preceding M5 bars, or ATR14 window incomplete (14-bar warm-up dominates the 3-bar lookback)",
+        "observed_missing": "1/3207 (0.03%) Universe A (trade_id L00000, limit_created_bar=1); 0/2474 in Universe B (that single event never filled)"
+      }
+    },
+    "alignment": {
+      "source_contract": "BOT-047.2.3",
+      "source_status": "FREEZE_READY",
+      "canonical_feature": "structural_alignment_consensus",
+      "representation": "CATEGORICAL_NON_ORDINAL",
+      "states": ["AGAINST_CONFIRMED", "AGAINST_SINGLE", "NEUTRAL", "ALIGNED_SINGLE", "ALIGNED_CONFIRMED", "UNAVAILABLE"],
+      "ordinality": "explicitly rejected by the source contract -- not mapped to a numeric scale, not assumed benefit(ALIGNED_CONFIRMED) == -harm(AGAINST_CONFIRMED)",
+      "derivation": "consensus of B0 (legacy 00:00 UTC boundary) and B1 (canonical 22:00 UTC boundary), each a HH/HL vs LH/LV sequence classification of the last 3 closed D1 blocks",
+      "special_semantics": "NEUTRAL is a REAL OBSERVED VALUE (both B0 and B1 == NEUTRAL_MIXED, i.e. structure exists but shows no lean) -- distinct from UNAVAILABLE (either boundary lacks sufficient causal D1 history). This distinction is load-bearing: NEUTRAL must never be confused with or substituted for UNAVAILABLE.",
+      "availability": {
+        "unavailable_reason": "B0 UNAVAILABLE OR B1 UNAVAILABLE (priority rule -- consensus requires BOTH inputs computable)",
+        "observed_missing": "18/2474 (0.73%), measured over Universe B (the only universe for which this artifact exists today)"
+      }
+    },
+    "structure": {
+      "source_contract": "BOT-048.2",
+      "source_status": "ORIGIN_ONLY_FREEZE",
+      "canonical_feature": "origin_dist_atr",
+      "representation": "RAW_CONTINUOUS",
+      "formula": "direction * (entry - origin_level) / atr_wilder(high,low,close,14)[b]",
+      "semantic_definition": "Location of the entry relative to the HTF level whose breakout last armed the signal, normalized by ATR14. Measures LOCATION within recent structure, not external direction (Alignment) nor speed (Momentum).",
+      "availability": {
+        "unavailable_reason": "ATR M5 warm-up (first 14 bars)",
+        "observed_missing": "1/3207 (0.03%) Universe A"
+      }
+    },
+    "context": {
+      "source_contract": "BOT-050.2",
+      "source_status": "TEMPORAL_ONLY_FREEZE",
+      "canonical_feature": "weekday",
+      "representation": "RAW_CATEGORICAL",
+      "states": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+      "note": "Full 7-value enum preserved per the frozen contract even though Saturday is never observed in the historical dataset (market closed) -- not collapsed to a boolean is_friday.",
+      "direction_conditional": "Friday effect significant in LONG/ALL, absent (not reversed) in SHORT -- BOT-050.2",
+      "availability": {
+        "unavailable_reason": "none expected -- time_utc always available, no warm-up documented",
+        "observed_missing": "0/3207"
+      }
+    }
+  },
+
+  "excluded_dimensions": {
+    "economics": {
+      "source_contract": "BOT-049.2",
+      "source_status": "NO_VALID_ECONOMICS_FREEZE",
+      "schema_presence": "ABSENT -- not a field, not null, not an UNAVAILABLE FactorObservation. Economics is not part of SignalQualityVectorV1 at all.",
+      "ownership_redirect": {
+        "risk_atr": "absorbed by structure.origin_dist_atr (rho=0.976-0.982)",
+        "friction_spread_over_risk_breakeven_pct_rr_effective_net": "owned by CVP (strategy/scoring.py::cvp_score()), bit-exact match, outside Signal Quality entirely",
+        "distance_to_limit_atr": "reclassified execution/fill-quality, outside Signal Quality",
+        "origin_retracement_frac": "CROSS_FACTOR_ONLY (Structure x Economics/RR), no owner",
+        "rr_nominal_rr_geometric": "REJECT_OTHER, degenerate under Config A"
+      },
+      "reopening_rule": "requires a new ticket ID (e.g. BOT-049.4), never a silent reinterpretation of BOT-049.2"
+    }
+  },
+
+  "availability_model": {
+    "levels": {
+      "1_factor_inclusion": {
+        "description": "is this factor a field of the schema at all?",
+        "included": ["momentum", "alignment", "structure", "context"],
+        "excluded_absent": ["economics"]
+      },
+      "2_observation_availability": {
+        "description": "per-event AVAILABLE/UNAVAILABLE, only meaningful for included factors",
+        "states": ["AVAILABLE", "UNAVAILABLE"]
+      }
+    },
+    "invariant": "UNAVAILABLE != NEUTRAL. UNAVAILABLE != 0. UNAVAILABLE != average. UNAVAILABLE != bad quality. Never imputed silently, in either direction (never upgraded to a value, never downgraded to a worse state)."
+  },
+
+  "causality": {
+    "canonical_timestamp": "limit_created_bar (== signal_bar == born_bar)",
+    "invariant": "SQ(t0) must remain immutable with respect to future market observations, where t0 = limit_created_bar.",
+    "forbidden_inputs": ["fill_bar", "trade outcome", "TP/SL result", "post-signal duration", "future MFE/MAE", "future fill/no-fill", "P&L", "any bar after limit_created_bar"],
+    "verified_identical_across_all_four_factors": true,
+    "verification_method": "shadow-replay parity (0 discrepancies) + causal re-slice per source contract; cross-checked again in BOT-051.1 and BOT-024.4 via successful trade_id joins with 0 loss"
+  },
+
+  "reconstructibility_evidence": {
+    "script": "scripts/reconstruct_signal_quality_vector_v1_xau.py",
+    "evidence_log": "reports/BOT-051.2-SIGNAL-QUALITY-FREEZE-EVIDENCE.log",
+    "audit_csv": "reports/BOT-051.2-signal-quality-vector-audit-xau.csv",
+    "n_base": 2474,
+    "base_universe_note": "Bounded by Alignment's own pre-computed artifact (Universe B, filled+closed trades) -- an ARTIFACT scope limitation, not a contract limitation. Momentum/Structure/Context are all causally computable for the full Universe A (3207 LIMITs); Alignment's consensus simply was never pre-computed for the 733 non-filled LIMITs in the existing artifacts.",
+    "n_fully_available": 2456,
+    "n_with_unavailable": 18,
+    "unavailable_source": "100% from Alignment (18/18); Momentum/Structure/Context show 0 UNAVAILABLE within this base universe (their own tiny warm-up edge cases happen to fall in the non-filled 733, outside Universe B)",
+    "join_success": "2474/2474 for momentum, structure and context (0 discrepancies, 0 duplicates)",
+    "direction_metadata_mismatches": 0,
+    "invalid_enum_values": 0,
+    "flip_undefined_cases": 0
+  },
+
+  "cross_factor_compatibility": {
+    "momentum_vs_structure": {
+      "value": "rho=+0.317 (roc_atr_3 vs origin_dist_atr, per BOT-024.4 section 4, recomputed against the actual canonical Momentum feature)",
+      "resolved_discrepancy": "BOT-048.2 had earlier reported rho=-0.214 for 'Momentum' vs origin_dist_atr, but that figure was computed against momentum_roc_atr_10 (a 10-bar candidate that was NEVER promoted to canonical). BOT-024.4 recomputed the correlation against the actual canonical roc_atr_3 and obtained rho=+0.317. Different sign and magnitude because they are different features, not a contradiction of the same measurement.",
+      "classification": "RELATED_BUT_DISTINCT",
+      "below_redundancy_threshold": true
+    },
+    "momentum_vs_context": {
+      "note": "BOT-050.2's joint diagnostic model used roc_atr_3 as a control variable BEFORE it was formally canonical (BOT-024.4 postdates BOT-050.2). Now that roc_atr_3 IS the canonical Momentum feature, this retroactively CONFIRMS (rather than weakens) that Context's TEMPORAL_ONLY_FREEZE ownership test rested on the correct feature, not a placeholder -- resolves the methodological caveat flagged as Risk #4 in BOT-051.1.",
+      "classification": "INDEPENDENT_OWNERSHIP",
+      "value": "no strong pattern -- weekday-conditional means of roc_atr_3 range 0.93-1.02, per BOT-024.4 section 4"
+    },
+    "momentum_vs_alignment": {
+      "value": "descriptive only (Alignment is categorical/non-ordinal by design) -- roc_atr_3 means by Alignment Consensus state range 0.93-1.00, no marked pattern, per BOT-024.4 section 4",
+      "classification": "INDEPENDENT_OWNERSHIP"
+    },
+    "alignment_vs_structure": { "value": "rho=+0.027 (practically null)", "classification": "INDEPENDENT_OWNERSHIP", "inherited_from": "BOT-051.1" },
+    "structure_vs_context": { "classification": "INDEPENDENT_OWNERSHIP", "note": "frozen contracts (origin_dist_atr vs weekday) unrelated; the REJECTED Context candidate atr_ratio_short_long did overlap with Structure's HTF mechanism, already resolved before this task by demoting it to CROSS_FACTOR_ONLY", "inherited_from": "BOT-051.1" },
+    "alignment_vs_context": { "classification": "INDEPENDENT_OWNERSHIP (mechanically expected, not directly tested)", "inherited_from": "BOT-051.1" }
+  },
+
+  "quality_semantics": {
+    "definition": "Signal Quality v1 is a causal, multidimensional description of the observable setup at the moment a LIMIT is born. It is not a guaranteed prediction of outcome, nor a retrospective judgment of whether the trade won or lost.",
+    "quality_not_outcome": true,
+    "explicit_non_equivalences": [
+      "winning trade != necessarily high quality",
+      "losing trade != necessarily low quality"
+    ],
+    "rule": "Outcome (pnl_r, pnl_usd, outcome, fill/no-fill, MFE/MAE) must never be used to define, redefine, or retrospectively adjust any component of the vector."
+  },
+
+  "why_not_scalar_yet": [
+    "Two of the four factors (Momentum, Structure) are RAW continuous by their own frozen contracts -- no defensible bins exist yet.",
+    "Alignment is categorical and explicitly non-ordinal by its own frozen contract.",
+    "Context is categorical and direction-conditional.",
+    "No defensible weights exist across four heterogeneous factors -- assigning any would be arbitrary.",
+    "None of the four factors is OOS-validated yet (BOT-024.3/BOT-047.3/BOT-048.3/BOT-050.3 all BLOCKED/WAITING).",
+    "Collapsing to a scalar before OOS risks retrofitting a score to historical outcome, which the project's experimental rule explicitly forbids.",
+    "This does NOT mean a 0-100 score is impossible -- it means it is not defined yet. The frozen vector is the architectural base a future, evidence-justified reduction would build on."
+  ],
+
+  "invariants": [
+    "1. observed_at_bar == limit_created_bar for every factor, verified identical across all four.",
+    "2. No future leakage -- no field may depend on fill_bar, outcome, or any bar after limit_created_bar.",
+    "3. The vector is immutable after creation -- no field is recomputed or reinterpreted once observed.",
+    "4. Exactly four quality dimensions: Momentum, Alignment, Structure, Context.",
+    "5. Economics is not a field of the schema -- absent, not null, not UNAVAILABLE.",
+    "6. direction is required metadata, never a quality factor, never scored.",
+    "7. UNAVAILABLE is never imputed silently, in either direction.",
+    "8. RAW continuous contracts (Momentum, Structure) remain RAW -- no bins, no thresholds invented.",
+    "9. Alignment remains categorical and non-ordinal.",
+    "10. Context remains categorical (full weekday enum) per its own frozen contract.",
+    "11. No outcome (pnl_r/pnl_usd/outcome/MFE/MAE/fill) forms part of the contract.",
+    "12. No weight forms part of v1.",
+    "13. No quality threshold forms part of v1.",
+    "14. No execution gate forms part of v1.",
+    "15. Alignment's NEUTRAL is a real observed value, never conflated with UNAVAILABLE.",
+    "16. The vector's fully-reconstructible universe today is bounded by Alignment's own artifact scope (Universe B, N=2474) -- documented explicitly, not silently narrowed or hidden.",
+    "17. Any reopening of an excluded/frozen source contract (Economics, or any of the four factors) uses a new ticket ID, never a silent reinterpretation of this contract."
+  ],
+
+  "pending_oos": ["BOT-024.3 (Momentum, BLOCKED)", "BOT-047.3 (Alignment, READY/WAITING FOR OOS)", "BOT-048.3 (Structure, PENDING/WAITING OOS)", "BOT-050.3 (Context, BLOCKED_WAITING_GENUINE_NEW_DATA)"],
+  "pending_not_blocking_this_freeze": ["Momentum standalone causal re-slice (BOT-024.4 section 12 limitation 3)", "ema_slope_atr_5 UNRESOLVED status"],
+
+  "guardrails": {
+    "no_weights": true,
+    "no_arbitrary_thresholds": true,
+    "no_bins_invented": true,
+    "no_0_100_score": true,
+    "no_gate": true,
+    "no_outcome_leakage": true,
+    "no_production_behavior_change": true
+  },
+
+  "next_recommended_ticket": "BOT-051.3 -- Signal Quality Vector Shadow Reconstruction / Observability (produce the vector in shadow, verify stability/reconstructibility over the full Universe A once an Alignment artifact exists for it, prepare exposure from limit_created_bar, accumulate OOS in parallel -- no score, no gate)."
+}
