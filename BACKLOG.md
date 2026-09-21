@@ -8,7 +8,7 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 
 **Regla de trabajo (ver también el pie de este archivo):** antes de implementar algo importante, buscar o crear su ID acá, pasarlo a `IN PROGRESS`, implementar, correr los tests, y recién pasarlo a `DONE` con la versión donde quedó. Nunca borrar un ítem — si se cancela, pasa a `CANCELLED` con el motivo.
 
-**IDs:** secuenciales, nunca se reutilizan aunque el ítem se cancele. Última ID **principal** usada: **BOT-048**. Siguiente disponible: **BOT-049**. Los IDs decimales (`BOT-XXX.1`, `.2`, `.3`, ...) no consumen IDs principales nuevos — ver "Convención para features experimentales" más abajo.
+**IDs:** secuenciales, nunca se reutilizan aunque el ítem se cancele. Última ID **principal** usada: **BOT-051**. Siguiente disponible: **BOT-052**. Los IDs decimales (`BOT-XXX.1`, `.2`, `.3`, ...) no consumen IDs principales nuevos — ver "Convención para features experimentales" más abajo.
 
 **Convenciones:**
 - Estados: `TODO` · `IN PROGRESS` · `BLOCKED` · `DONE` · `CANCELLED`
@@ -26,9 +26,9 @@ Fuente única de verdad de tareas, mejoras, bugs y funcionalidades — pendiente
 
 ## Prioridad actual de trabajo
 
-*(Última actualización: 2026-09-20, ver BOT-024.2/BOT-024.3/BOT-047/BOT-047.1/BOT-047.2/BOT-047.3/BOT-048/BOT-048.1/BOT-048.2.)* Esta sección representa el **orden operativo recomendado** — puede diferir de la prioridad intrínseca (`CRITICAL`/`HIGH`/`MEDIUM`/`LOW`) de cada ítem, que no se modifica solo para coincidir con este orden.
+*(Última actualización: 2026-09-20, ver BOT-024.2/BOT-024.3/BOT-047/BOT-047.1/BOT-047.2/BOT-047.3/BOT-048/BOT-048.1/BOT-048.2/BOT-049/BOT-050/BOT-051.)* Esta sección representa el **orden operativo recomendado** — puede diferir de la prioridad intrínseca (`CRITICAL`/`HIGH`/`MEDIUM`/`LOW`) de cada ítem, que no se modifica solo para coincidir con este orden.
 
-1. **BOT-024 — Signal Quality** (línea de investigación activa, `HIGH`): ~~**BOT-024.1** — Evaluación predictiva de Divergencia RSI~~ `DONE`. ~~**BOT-024.2** — Momentum Feature Discovery XAU~~ `DONE` — ver `reports/BOT-024.2-MOMENTUM-FEATURE-DISCOVERY.md`. **BOT-024.3** — Momentum Out-of-Sample Validation `BLOCKED — waiting for genuine OOS` (no existe histórico posterior al 2026-09-15 en el repositorio, ver `reports/BOT-024.3-MOMENTUM-OOS.md`). **BOT-047 — D1 Alignment** (feature padre, `IN PROGRESS / RESEARCH`): ~~**BOT-047.1 — D1 Alignment Feature Discovery**~~ `DONE` — ver `reports/BOT-047.1-D1-ALIGNMENT-FEATURE-DISCOVERY.md`. ~~**BOT-047.2 — D1 Alignment Definition Freeze**~~ `DONE` — resultado **`PROVISIONAL`** (no `FREEZE_READY`), ver `reports/BOT-047.2-ALIGNMENT-DEFINITION-FREEZE.md`. `closed_ema200_slope` se trata provisionalmente como **D1 Regime / Trend Strength**, no como definición final de Alignment. ~~**BOT-047.2.1 — Structural Alignment Definition & Legacy Decomposition**~~ `DONE` — resultado **`PROVISIONAL`**, ver `reports/BOT-047.2.1-STRUCTURAL-ALIGNMENT-DEFINITION.md`. ~~**BOT-047.2.2 — D1 Structural Boundary Validation**~~ `DONE` — resultado **`PROVISIONAL`**, ver `reports/BOT-047.2.2-D1-STRUCTURAL-BOUNDARY-VALIDATION.md`. ~~**BOT-047.2.3 — Structural Alignment Consensus Definition Freeze**~~ `DONE` — resultado **`FREEZE_READY`** (definición congelada, no validada), ver `reports/BOT-047.2.3-STRUCTURAL-ALIGNMENT-CONSENSUS-FREEZE.md`. **BOT-047.3 — D1 Alignment OOS Validation** `READY / WAITING FOR OOS` — la decisión metodológica ya está tomada (Structural Alignment Consensus, congelado en `BOT-047.2.3`), pero sigue sin ejecutarse porque no existe histórico posterior al 2026-09-15 en el repositorio (mismo motivo que `BOT-024.3`). **BOT-048 — Structure** (feature padre, `IN PROGRESS / RESEARCH`): ~~**BOT-048.1 — Structure Feature Discovery**~~ `DONE` — ver `reports/BOT-048.1-STRUCTURE-FEATURE-DISCOVERY.md`. ~~**BOT-048.2 — Structure Definition Freeze**~~ `DONE` — resultado **`ORIGIN_ONLY_FREEZE`** (contrato RAW continuo sobre `origin_dist_atr`; Swing y Forward-Space evaluados y rechazados, Structural Consensus rechazado por falta de frontera defendible, `origin_retracement_frac` clasificado `CROSS_FACTOR_ONLY`), ver `reports/BOT-048.2-STRUCTURE-DEFINITION-FREEZE.md`. **BOT-048.3 — Structure OOS Validation** `PENDING / WAITING OOS` — contrato pre-registrado en `BOT-048.2`, sigue sin ejecutarse porque no existe histórico posterior al 2026-09-15 en el repositorio (mismo motivo que `BOT-024.3`/`BOT-047.3`). BOT-024 en sí (definición formal de Signal Quality 0–100) permanece `TODO`, no se implementa nada de esto todavía.
+1. **BOT-024 — Signal Quality** (línea de investigación activa, `HIGH`): ~~**BOT-024.1** — Evaluación predictiva de Divergencia RSI~~ `DONE`. ~~**BOT-024.2** — Momentum Feature Discovery XAU~~ `DONE` — ver `reports/BOT-024.2-MOMENTUM-FEATURE-DISCOVERY.md`. **BOT-024.3** — Momentum Out-of-Sample Validation `BLOCKED — waiting for genuine OOS` (no existe histórico posterior al 2026-09-15 en el repositorio, ver `reports/BOT-024.3-MOMENTUM-OOS.md`). **BOT-047 — D1 Alignment** (feature padre, `IN PROGRESS / RESEARCH`): ~~**BOT-047.1 — D1 Alignment Feature Discovery**~~ `DONE` — ver `reports/BOT-047.1-D1-ALIGNMENT-FEATURE-DISCOVERY.md`. ~~**BOT-047.2 — D1 Alignment Definition Freeze**~~ `DONE` — resultado **`PROVISIONAL`** (no `FREEZE_READY`), ver `reports/BOT-047.2-ALIGNMENT-DEFINITION-FREEZE.md`. `closed_ema200_slope` se trata provisionalmente como **D1 Regime / Trend Strength**, no como definición final de Alignment. ~~**BOT-047.2.1 — Structural Alignment Definition & Legacy Decomposition**~~ `DONE` — resultado **`PROVISIONAL`**, ver `reports/BOT-047.2.1-STRUCTURAL-ALIGNMENT-DEFINITION.md`. ~~**BOT-047.2.2 — D1 Structural Boundary Validation**~~ `DONE` — resultado **`PROVISIONAL`**, ver `reports/BOT-047.2.2-D1-STRUCTURAL-BOUNDARY-VALIDATION.md`. ~~**BOT-047.2.3 — Structural Alignment Consensus Definition Freeze**~~ `DONE` — resultado **`FREEZE_READY`** (definición congelada, no validada), ver `reports/BOT-047.2.3-STRUCTURAL-ALIGNMENT-CONSENSUS-FREEZE.md`. **BOT-047.3 — D1 Alignment OOS Validation** `READY / WAITING FOR OOS` — la decisión metodológica ya está tomada (Structural Alignment Consensus, congelado en `BOT-047.2.3`), pero sigue sin ejecutarse porque no existe histórico posterior al 2026-09-15 en el repositorio (mismo motivo que `BOT-024.3`). **BOT-048 — Structure** (feature padre, `IN PROGRESS / RESEARCH`): ~~**BOT-048.1 — Structure Feature Discovery**~~ `DONE` — ver `reports/BOT-048.1-STRUCTURE-FEATURE-DISCOVERY.md`. ~~**BOT-048.2 — Structure Definition Freeze**~~ `DONE` — resultado **`ORIGIN_ONLY_FREEZE`** (contrato RAW continuo sobre `origin_dist_atr`; Swing y Forward-Space evaluados y rechazados, Structural Consensus rechazado por falta de frontera defendible, `origin_retracement_frac` clasificado `CROSS_FACTOR_ONLY`), ver `reports/BOT-048.2-STRUCTURE-DEFINITION-FREEZE.md`. **BOT-048.3 — Structure OOS Validation** `PENDING / WAITING OOS` — contrato pre-registrado en `BOT-048.2`, sigue sin ejecutarse porque no existe histórico posterior al 2026-09-15 en el repositorio (mismo motivo que `BOT-024.3`/`BOT-047.3`). **Roadmap acordado para completar Signal Quality** (formalizado 2026-09-20, ninguna tarea ejecutada todavía): **BOT-049 — Economics** → **BOT-050 — Context** → **BOT-051 — Signal Quality Integration** → **BOT-025** (gate/decisión de ejecución, downstream). **NEXT ACTIVE: `BOT-049.1` — Economics Feature Discovery** (no iniciada, ver `BOT-049` más abajo). BOT-024 en sí (definición formal de Signal Quality 0–100) permanece `TODO`, no se implementa nada de esto todavía — su continuación pasa ahora por `BOT-049`→`BOT-050`→`BOT-051`.
 2. ~~**BOT-045** — Market regime / calidad de entradas~~ `DONE`. ~~**BOT-046** — Dirección/D1 + robustez temporal~~ `DONE` — recomendación: RESULTADO 2 (más historial), ver `docs/reports/BOT-046_direction_d1_temporal_robustness.md`. No se abre todavía una Prueba controlada de filtro/scoring; su continuación conceptual para la dimensión Alignment de Signal Quality es la secuencia **BOT-047.1 → BOT-047.2 → BOT-047.3** dentro de la feature padre `BOT-047` (ID nueva, no una reapertura de BOT-046 — ver esas entradas).
 3. ~~**BOT-008** — Re-run completo del sweep~~ `DONE` — re-ejecutado con el motor corregido: ESCENARIO A marginal (edge real pero delgado, PF~1.05, dos configuraciones — `cfg_1260`/`cfg_1278` — positivas en USD en los 3 sub-períodos), ver `docs/reports/BOT-008_rerun_post_BOT043.md`. Próximo paso recomendado (no ejecutado): validación Out-of-Sample genuina sobre esas dos configuraciones, mismo criterio que `VALIDATION-D1-OOS` — no se abre automáticamente otro sweep ni se cambia producción.
 
@@ -378,10 +378,10 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
   - **Momentum** — velocidad/persistencia/aceleración del movimiento de precio en `limit_created_bar` (BOT-024.2/BOT-024.3).
   - **Alignment** — si la dirección del trade está a favor o en contra del contexto direccional de mayor plazo (D1) (BOT-047, feature padre, sucesora conceptual de BOT-045/BOT-046).
   - **Structure** — ubicación estructural del `LIMIT` dentro de la estructura M5 reciente del precio (swings, rango, origen de la ruptura que armó la señal) — distinta de Alignment D1 pese al nombre parecido (BOT-048, feature padre).
-  - **Economics** — RR, costos, spread, stop (parcialmente cubierto hoy por el factor CVP de BOT-023).
-  - **Context** — sesión, hora, régimen (diagnosticado parcialmente en BOT-045, sin dimensión formal todavía).
+  - **Economics** — geometría económica del setup disponible causalmente al crear el LIMIT: RR, costos, spread, stop (parcialmente cubierto hoy por el factor CVP de BOT-023; `BOT-049`, feature padre — incluye evaluar `origin_retracement_frac`, que `BOT-048.2` clasificó `CROSS_FACTOR_ONLY` y excluyó de Structure por mezclar `origin_level` con `target`/RR).
+  - **Context** — condiciones ambientales/de mercado alrededor de la señal: sesión, hora, régimen, volatilidad (diagnosticado parcialmente en BOT-045, sin dimensión formal todavía; `BOT-050`, feature padre).
 
-  No se asignan pesos ni se implementa ninguna de estas dimensiones en esta entrada — es únicamente el marco conceptual que están llenando las subtareas de investigación.
+  No se asignan pesos ni se implementa ninguna de estas dimensiones en esta entrada — es únicamente el marco conceptual que están llenando las subtareas de investigación. Roadmap acordado (formalizado 2026-09-20) para completar las 5 dimensiones e integrarlas: `BOT-049` (Economics) → `BOT-050` (Context) → `BOT-051` (Signal Quality Integration) → `BOT-025` (gate/decisión de ejecución, downstream — ver esas entradas). Ninguna de estas tareas fue ejecutada todavía; esta actualización es exclusivamente de backlog/documentación.
 - **Dependencias:** BOT-023.
 - **Subtareas/experimentos:**
   - `BOT-024.1` `DONE` — auditoría y evaluación predictiva de Divergencia RSI (insumo de diagnóstico, no es Momentum en sí).
@@ -398,8 +398,17 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
     - `BOT-048.1` `DONE` — Structure Feature Discovery.
     - `BOT-048.2` `DONE` — Structure Definition Freeze (resultado `ORIGIN_ONLY_FREEZE`).
     - `BOT-048.3` `PENDING / WAITING OOS` — Structure OOS Validation (contrato congelado por `BOT-048.2`; espera histórico genuinamente posterior al 2026-09-15).
+  - `BOT-049` `TODO` — Economics (feature padre, ver "Convención para features experimentales" más abajo):
+    - `BOT-049.1` `TODO — NEXT ACTIVE` — Economics Feature Discovery.
+    - `BOT-049.2` `TODO` — Economics Definition Freeze.
+    - `BOT-049.3` `TODO — PENDING / WAITING GENUINE OOS` — Economics OOS Validation.
+  - `BOT-050` `TODO` — Context (feature padre, ver "Convención para features experimentales" más abajo):
+    - `BOT-050.1` `TODO` — Context Feature Discovery.
+    - `BOT-050.2` `TODO` — Context Definition Freeze.
+    - `BOT-050.3` `TODO — PENDING / WAITING GENUINE OOS` — Context OOS Validation.
+  - `BOT-051` `TODO` — Signal Quality Integration (ID principal, no lleva subestructura `.1/.2/.3` — ver esa entrada).
 
-  BOT-024 en sí (la definición formal de Signal Quality 0–100) sigue `TODO` — no se cierra hasta tener evidencia suficientemente validada (OOS) de al menos Momentum y Alignment.
+  BOT-024 en sí (la definición formal de Signal Quality 0–100) sigue `TODO` — no se cierra hasta tener evidencia suficientemente validada (OOS) de al menos Momentum y Alignment. Su continuación pasa ahora por `BOT-049` → `BOT-050` → `BOT-051`, próximo trabajo activo: `BOT-049.1`.
 
 ### BOT-024.1 — Evaluación predictiva A/B de Divergencia RSI
 - **Categoría:** Scoring
@@ -457,8 +466,9 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
 - **Incorporado:** 2026-09-14
 - **Versión objetivo:** sin definir
 - **Descripción:** Permitir rechazar una entrada si su score queda por debajo de un umbral configurable (`minimum_entry_score = 70`, por ejemplo). El diseño de `scoring.py` ya contempla esto para el factor CVP específicamente ("el gate... está descripto en el diseño pero deliberadamente desactivado en esta primera pasada") — falta generalizarlo al score total y exponerlo como configuración.
+- **Estado downstream (actualizado 2026-09-20, ver roadmap en `BOT-024`):** permanece explícitamente **pendiente/downstream** de la secuencia `BOT-047/048/049/050` (Discovery/Freeze por dimensión) → `BOT-051` (Signal Quality Integration) → `BOT-025`. No se cierra, no se cancela ni se reinterpreta aquí — su diseño concreto (qué escala, qué umbral, si aplica sobre el 0–100 integrado de `BOT-051` o sobre otra representación) puede cambiar según lo que `BOT-051` produzca.
 - **Notas técnicas:** Debe seguir siendo una capa que se pueda desactivar — no reemplazar la lógica base de señales (`engine.py`/`live_signal.py`).
-- **Dependencias:** BOT-023, BOT-024 (para que el umbral tenga una escala estable antes de fijar un default razonable).
+- **Dependencias:** BOT-023, BOT-024 (para que el umbral tenga una escala estable antes de fijar un default razonable) — en la práctica, esa escala estable depende ahora de que `BOT-051` complete la integración de las 5 dimensiones.
 
 ### BOT-047 — D1 Alignment
 - **Categoría:** Scoring / Investigación
@@ -583,6 +593,102 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
 - **Resultado (2026-09-20):** **Decisión: `ORIGIN_ONLY_FREEZE`** (contrato RAW continuo, sin thresholds/estados) sobre `origin_dist_atr` — justificada por semántica/causalidad/interpretabilidad/reproducibilidad/no-redundancia/robustez, **no** por performance histórica (ver reporte sección 15 para la comparación explícita). **Swing rechazado:** `market_swing_state`/`swing_trade_relation` (combinación nueva de esta tarea, `BULLISH`/`BEARISH`/`MIXED`/`UNAVAILABLE`, invariantes verificados por assertion) muestra una asimetría LONG/SHORT que **invierte de signo** (`MIXED` es significativamente malo para LONG, `ExpR=-0.168 [-0.265,-0.075]` IC 95%, pero el mejor estado — no significativo — para SHORT) sin explicación estructural clara. **Forward-Space rechazado:** tras colapsar la redundancia G/H (`ρ=1.000` entre `space_to_next_swing_atr` y `dist_first_obstacle_tp_atr`, reconfirmado) y elegir la representación geométrica limpia (`space_to_next_swing_atr`, independiente de TP/RR), la señal sigue siendo prácticamente nula (`ρ=+0.026` vs `pnl_r`). **Structural Consensus rechazado:** exigiría umbralizar `origin_dist_atr` sin una frontera geométrica defendible (los quintiles del análisis son descriptivos, no congelables) — aplicada la cláusula explícita de rechazo del enunciado. **`origin_retracement_frac` clasificado `CROSS_FACTOR_ONLY`** (obligatorio por enunciado): pese a tener el mayor `|ρ|` individual de todo `BOT-048.1` (+0.387), 97.6% de los eventos caen en una banda de 0.10 de ancho — dependencia mecánica confirmada de `RR=1.0`, no se promueve a Structure, queda documentado como candidata explícita para una futura dimensión Economics (no iniciada). **Hallazgo nuevo no reportado en `BOT-048.1`:** `ρ(origin_dist_atr, momentum_roc_atr_10)=-0.214` — moderada, la mayor entre las candidatas limpias de Economics, documentada sin ocultar (muy por debajo del umbral de redundancia fuerte `|ρ|>=0.8` del proyecto, pero es una reserva explícita para `BOT-048.3`). **Efecto de `origin_dist_atr` con IC (bootstrap 95%/Wilson 95%, nuevo en esta tarea):** estadísticamente distinguible de cero en ALL (Q5 `ExpR=-0.116 [-0.201,-0.027]`) y en LONG (patrón en U: Q1 `-0.204 [-0.329,-0.073]`, Q5 `-0.180 [-0.302,-0.056]`), pero **no** en SHORT ni en cada sub-período individual por separado (N insuficiente por bucket) — dirección consistente en 3/3 sub-períodos, documentado sin sobre-afirmar significancia donde no la hay. **Corrección menor a `BOT-048.1`:** la cobertura de `origin_dist_atr` es 99.97% (3.206/3.207), no 100.0% como esa tarea había redondeado — 1 evento de warm-up de ATR, no cambia ninguna conclusión. Ningún score, peso, gate ni cambio de producción implementado. **Reporte completo:** `reports/BOT-048.2-STRUCTURE-DEFINITION-FREEZE.md` (incluye el contrato formal completo). Script: `scripts/freeze_structure_definition_xau.py`. Evidence log: `reports/BOT-048.2-STRUCTURE-DEFINITION-FREEZE-EVIDENCE.log`.
 - **Impacto sobre BOT-048.3:** pasa a `PENDING / WAITING OOS` — el contrato completo (definición, inputs, invariantes, métricas de validación, criterios de éxito/fallo explícitamente distintos de `P&L>0`) queda pre-registrado en el reporte sección 21; sigue sin poder ejecutarse porque no existe histórico genuinamente posterior al 2026-09-15 en el repositorio (mismo motivo que `BOT-024.3`/`BOT-047.3`).
 - **Dependencias:** BOT-048.1.
+
+### BOT-049 — Economics
+- **Categoría:** Scoring / Investigación
+- **Estado:** TODO (feature padre — no se marca `IN PROGRESS` hasta que `BOT-049.1` arranque)
+- **Prioridad:** HIGH
+- **Incorporado:** 2026-09-20
+- **Versión objetivo:** N/A — investigación offline
+- **Descripción:** Feature padre de `BOT-024` (Signal Quality), dimensión `Economics` — **¿qué geometría económica del setup existe, de forma observable, causal y reproducible, en el momento de creación del LIMIT?** (RR, costos, spread, distancia a SL/TP, y cualquier variable derivada que describa el "diseño económico" de la oportunidad) — explícitamente independiente de Momentum (`BOT-024.2`/`BOT-024.3`), Alignment (`BOT-047`), Structure (`BOT-048`, `ORIGIN_ONLY_FREEZE`) y Context (`BOT-050`). No debe duplicar ninguna de esas dimensiones.
+  - **Candidata conocida de entrada:** `origin_retracement_frac` — `BOT-048.2` la clasificó `CROSS_FACTOR_ONLY` y la excluyó explícitamente de Structure porque mezcla `origin_level` (Structure) con `target`/RR (Economics); debe evaluarse aquí desde cero, sin asumir de antemano que será la definición final de Economics.
+  - **Relación con el factor CVP existente (BOT-023/`scoring.py::cvp_score()`):** CVP ya cubre parcialmente breakeven neto vs. aciertos%; `BOT-049` no lo reemplaza ni lo reinterpreta — investiga si existen otras variables económicas (geometría RR/costos/distancias) no capturadas por CVP.
+  - **Estructura interna (convención de features experimentales, ver regla permanente más abajo):** sigue la misma subestructura `.1/.2/.3` que `BOT-047`/`BOT-048` — ver `BOT-049.1` a continuación.
+- **Dependencias:** BOT-024 (marco conceptual de Signal Quality), BOT-048.2 (candidata `origin_retracement_frac`, sin reinterpretar su clasificación en Structure).
+- **Subtareas:**
+  - `BOT-049.1` `TODO — NEXT ACTIVE` — Economics Feature Discovery (siguiente trabajo activo del proyecto; no ejecutada en esta actualización de backlog).
+  - `BOT-049.2` `TODO` — Economics Definition Freeze (no iniciada).
+  - `BOT-049.3` `TODO — PENDING / WAITING GENUINE OOS` — Economics OOS Validation (no iniciada).
+
+### BOT-049.1 — Economics Feature Discovery
+- **Categoría:** Scoring / Investigación
+- **Estado:** TODO — NEXT ACTIVE
+- **Prioridad:** HIGH
+- **Incorporado:** 2026-09-20
+- **Versión objetivo:** N/A — investigación offline
+- **Descripción:** Subtarea de `BOT-049` (Economics). Pregunta central: **¿qué variables económicas observables, causales y reproducibles existen en el momento de creación del LIMIT y describen la geometría económica de la oportunidad?** `OFFLINE / DISCOVERY / NO PRODUCTION CHANGES / NO SCORE / NO GATE` — mismo tipo de disciplina que `BOT-048.1` (shadow replay exhaustivo + verificación causal antes de interpretar cualquier resultado), aplicada a Economics. Debe incluir como candidato conocido `origin_retracement_frac` (ver nota en `BOT-049`), sin asumir que será la definición final. **No ejecutada en esta actualización de backlog** — esta entrada es exclusivamente el registro del próximo trabajo activo.
+- **Dependencias:** BOT-049 (feature padre), BOT-048.2 (candidata `origin_retracement_frac`).
+
+### BOT-049.2 — Economics Definition Freeze
+- **Categoría:** Scoring / Investigación / Definición formal
+- **Estado:** TODO
+- **Prioridad:** HIGH
+- **Incorporado:** 2026-09-20
+- **Versión objetivo:** N/A — investigación offline, sin release de producción
+- **Descripción:** Subtarea de `BOT-049`, sucesora de `BOT-049.1`. Congelará la representación de Economics basándose en semántica, causalidad, interpretabilidad, reproducibilidad, no-redundancia y robustez — no solo en P&L o correlación histórica (mismo criterio que `BOT-047.2`/`BOT-048.2`). No se ejecuta hasta que `BOT-049.1` esté `DONE`.
+- **Dependencias:** BOT-049.1.
+
+### BOT-049.3 — Economics Out-of-Sample Validation
+- **Categoría:** Scoring / Investigación / Validación
+- **Estado:** TODO — PENDING / WAITING GENUINE OOS
+- **Prioridad:** HIGH
+- **Incorporado:** 2026-09-20
+- **Versión objetivo:** N/A — investigación offline, sin release de producción
+- **Descripción:** Subtarea de `BOT-049`, sucesora de `BOT-049.2`. Validará exclusivamente la definición congelada de Economics sobre histórico genuinamente posterior al corte OOS vigente (2026-09-15) — mismo criterio que `BOT-024.3`/`BOT-047.3`/`BOT-048.3`. No se ejecuta hasta que exista ese histórico y `BOT-049.2` esté `DONE`.
+- **Dependencias:** BOT-049.2.
+
+### BOT-050 — Context
+- **Categoría:** Scoring / Investigación
+- **Estado:** TODO (feature padre — no se marca `IN PROGRESS` hasta que `BOT-050.1` arranque)
+- **Prioridad:** HIGH
+- **Incorporado:** 2026-09-20
+- **Versión objetivo:** N/A — investigación offline
+- **Descripción:** Feature padre de `BOT-024` (Signal Quality), dimensión `Context` — condiciones ambientales/de mercado alrededor de la señal, separadas explícitamente de Momentum, Alignment, Structure y Economics.
+  - **Candidatos futuros a evaluar en `BOT-050.1`** (mencionados aquí solo como referencia, ninguno promovido automáticamente — el discovery deberá clasificarlos): datos ya estudiados descriptivamente en `BOT-045` — sesión, hora/día, ATR/volatilidad, ADX, RSI (cuando corresponda semánticamente a Context y no ya cubierto por Momentum/Alignment), distancia a EMA, régimen, contexto condicional LONG/SHORT, y otras variables ambientales causales. `BOT-045` en sí permanece `DONE` sin cambios — `BOT-050.1` no reabre ni reinterpreta ese hallazgo, solo puede reutilizarlo como antecedente.
+  - **Estructura interna:** sigue la misma subestructura `.1/.2/.3` — ver `BOT-050.1` a continuación.
+- **Dependencias:** BOT-024 (marco conceptual de Signal Quality), BOT-045 (antecedente descriptivo, reutilizado sin reinterpretar).
+- **Subtareas:**
+  - `BOT-050.1` `TODO` — Context Feature Discovery (no iniciada).
+  - `BOT-050.2` `TODO` — Context Definition Freeze (no iniciada).
+  - `BOT-050.3` `TODO — PENDING / WAITING GENUINE OOS` — Context OOS Validation (no iniciada).
+
+### BOT-050.1 — Context Feature Discovery
+- **Categoría:** Scoring / Investigación
+- **Estado:** TODO
+- **Prioridad:** HIGH
+- **Incorporado:** 2026-09-20
+- **Versión objetivo:** N/A — investigación offline
+- **Descripción:** Subtarea de `BOT-050` (Context). Investigará qué variables ambientales/de mercado observables, causales y reproducibles existen en el momento de creación del LIMIT (ver candidatos de referencia en `BOT-050`). No promueve automáticamente ninguna variable de `BOT-045` — las clasificará con el mismo rigor causal que `BOT-048.1`/`BOT-049.1`. **No ejecutada en esta actualización de backlog.**
+- **Dependencias:** BOT-050 (feature padre), BOT-045 (antecedente).
+
+### BOT-050.2 — Context Definition Freeze
+- **Categoría:** Scoring / Investigación / Definición formal
+- **Estado:** TODO
+- **Prioridad:** HIGH
+- **Incorporado:** 2026-09-20
+- **Versión objetivo:** N/A — investigación offline, sin release de producción
+- **Descripción:** Subtarea de `BOT-050`, sucesora de `BOT-050.1`. Congelará la representación de Context con el mismo criterio (semántica/causalidad/interpretabilidad/reproducibilidad/no-redundancia/robustez, no solo performance) que `BOT-047.2`/`BOT-048.2`/`BOT-049.2`. No se ejecuta hasta que `BOT-050.1` esté `DONE`.
+- **Dependencias:** BOT-050.1.
+
+### BOT-050.3 — Context Out-of-Sample Validation
+- **Categoría:** Scoring / Investigación / Validación
+- **Estado:** TODO — PENDING / WAITING GENUINE OOS
+- **Prioridad:** HIGH
+- **Incorporado:** 2026-09-20
+- **Versión objetivo:** N/A — investigación offline, sin release de producción
+- **Descripción:** Subtarea de `BOT-050`, sucesora de `BOT-050.2`. Validará la definición congelada de Context sobre histórico genuinamente posterior al corte OOS vigente (2026-09-15) — mismo criterio que `BOT-024.3`/`BOT-047.3`/`BOT-048.3`/`BOT-049.3`. No se ejecuta hasta que exista ese histórico y `BOT-050.2` esté `DONE`.
+- **Dependencias:** BOT-050.2.
+
+### BOT-051 — Signal Quality Integration
+- **Categoría:** Scoring / Investigación / Definición formal
+- **Estado:** TODO
+- **Prioridad:** HIGH
+- **Incorporado:** 2026-09-20
+- **Versión objetivo:** N/A — investigación offline, sin release de producción
+- **Descripción:** Integrar las cinco dimensiones de `Signal Quality` (`Momentum` + `Alignment` + `Structure` + `Economics` + `Context`) preservando significado, trazabilidad e interpretabilidad de cada una — **no asume weighted scoring ni pesos iguales/arbitrarios**. Dirección futura de producto a mantener: `SIGNAL QUALITY: XX/100` con tabla/desglose visible de los 5 factores y, si todos cumplen causalidad, disponible desde `limit_created_bar`. La transformación 0–100, los pesos, el manejo de confianza/`confidence` y las reglas de combinación deben definirse **posteriormente, con evidencia** — no en esta entrada ni de forma automática al completarse `BOT-049`/`BOT-050`. `BOT-051` **no introduce por sí mismo ningún gate en vivo**.
+  - **ID principal, no lleva subestructura `.1/.2/.3`** — a diferencia de `BOT-047`/`BOT-048`/`BOT-049`/`BOT-050` (que son *discovery* de una dimensión nueva), `BOT-051` es la tarea de *integración* de dimensiones ya congeladas; se decidirá si necesita subdividirse cuando se aborde, con evidencia de cuánto trabajo real implica.
+- **Dependencias:** `BOT-024.2`/`BOT-024.3` (Momentum), `BOT-047` (Alignment), `BOT-048` (Structure), `BOT-049` (Economics), `BOT-050` (Context) — conceptualmente depende de las cinco, aunque el enunciado del roadmap no exige que las cinco tengan OOS validado antes de que `BOT-051` pueda empezar a diseñarse (a definir cuando se aborde).
+- **Relación con `BOT-025`:** `BOT-025` (gate configurable de scoring) queda **downstream** de esta tarea — la secuencia acordada es `Factor Discovery/Freeze (BOT-047/048/049/050) → BOT-051 (Signal Quality Integration) → BOT-025 (gate/decisión de ejecución) → posible gate/ejecución futura`. `BOT-025` puede cambiar de diseño según lo que `BOT-051` produzca; no se marca `DONE`, `CANCELLED` ni se reinterpreta aquí — ver esa entrada.
 
 ### BOT-044 — `scoring.py::cvp_score()` convierte comisión a precio con `contract_size` (mismo patrón que BOT-043, en código que corre en vivo)
 - **Categoría:** Scoring
@@ -777,7 +883,7 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
 Antes de implementar cualquier funcionalidad nueva importante:
 
 1. Revisar este `BACKLOG.md`.
-2. Crear o identificar el ID correspondiente (siguiente ID **principal** disponible: **BOT-049**; si la tarea es una feature experimental que requiere discovery estadístico, considerar la subestructura `.1/.2/.3` — ver "Convención para features experimentales" más abajo — en vez de un nuevo ID principal).
+2. Crear o identificar el ID correspondiente (siguiente ID **principal** disponible: **BOT-052**; si la tarea es una feature experimental que requiere discovery estadístico, considerar la subestructura `.1/.2/.3` — ver "Convención para features experimentales" más abajo — en vez de un nuevo ID principal).
 3. Cambiarlo a `IN PROGRESS` al comenzar.
 4. Implementar.
 5. Correr los tests correspondientes (ver los scripts `test_*.py` de cada módulo — no hay `pytest` instalado en el entorno, se corren como script plano: `python strategy/test_engine.py`, etc.).
