@@ -1,0 +1,154 @@
+BOT-050.2 -- Context Definition Freeze, XAU -- Evidencia de ejecucion
+======================================================================
+
+1. Pre-flight
+--------------
+Branch: main
+HEAD inicial: 6a360e365930c5a2fe3121d94203189270104eec
+  ("research: complete BOT-050.1 context feature discovery")
+Working tree inicial: limpio (git status --short vacio antes de empezar)
+Commit de cierre BOT-050.1 confirmado: 6a360e3 (coincide con el esperado
+  por el prompt de la tarea).
+Dataset (reusado sin recalcular): backtests/data/XAUUSDc_M5_latest.parquet
+  -- 100.505 barras M5, hasta 2026-09-15
+Config A (reusada, no modificada): ema_periods=12, periodos_htf_min=800,
+  buf_bp=0.4, rr=1.0
+Universo A = 3.207 LIMITS (LONG=1.534, SHORT=1.673) -- confirmado
+Universo B = 2.474 FILLED_CLOSED -- confirmado
+Checksums de los CSV de BOT-050.1 (verificados IDENTICOS a los
+  registrados en reports/BOT-050.1-context-evidence.txt -- no fueron
+  modificados entre tareas):
+  d2ff1721339cbb5dcc932762a88dde99599d7af6e2e9b986d9451ae02a398d6  reports/BOT-050.1-context-limits-xau.csv
+  3e7a0bbfd783092116b3386542cc737bb9bfee489267a86914cf20d3e56c853  reports/BOT-050.1-context-trades-xau.csv
+
+2. Comando de ejecucion
+------------------------
+.venv/Scripts/python.exe scripts/freeze_context_definition_xau.py \
+    > reports/BOT-050.2-CONTEXT-DEFINITION-FREEZE-EVIDENCE.log 2>&1
+Exit code: 0
+No requiere MT5 -- 100% reuso de CSV ya causales, sin recalcular ninguna
+feature, sin correr strategy.engine.run_backtest().
+
+3. Candidate set cerrado -- verificado, no ampliado
+-------------------------------------------------------
+Unicas columnas usadas: atr_ratio_short_long, atr_ratio_short_long_alt,
+  weekday (is_friday), session_utc (is_asia), mas las 3 columnas de
+  control YA CONGELADAS (roc_atr_3, closed_ema200_slope,
+  origin_dist_atr) y direction. Ningun periodo ATR fuera de {14, 160,
+  288}. Ninguna feature nueva calculada -- verificado por inspeccion del
+  script (no importa MetaTrader5, no importa strategy.engine, no llama
+  ninguna funcion atr_wilder/adx_wilder/rsi).
+
+4. Assertions inline (check()) del script
+--------------------------------------------
+PASS: 11/11
+FAIL: 0/11
+Cubren: Universo A/B == 3.207/2.474, LONG+SHORT==A completo,
+  LONG/SHORT esperados (1.534/1.673), candidate set cerrado (columnas
+  requeridas presentes, sin recalculo), particion de sub-periodos
+  completa (sub1+sub2+sub3==B), ratios recalculados desde las MISMAS
+  columnas del CSV coinciden exactamente con los valores almacenados
+  (tolerancia 1e-9, para /160 y /288 por separado), merge exacto con
+  Momentum/Alignment/Structure reproduce el Universo B completo
+  (2.474/2.474), colinealidad basica del modelo diagnostico aceptable
+  (|r|<0.8 entre TODOS los pares de regresores).
+(Ver detalle completo en reports/BOT-050.2-CONTEXT-DEFINITION-FREEZE-
+EVIDENCE.log -- archivo *.log, gitignored por *.log en .gitignore,
+mismo patron que las 5 tareas anteriores de esta familia.)
+
+5. Determinismo / rerun
+---------------------------
+Script sin aleatoriedad de datos (bootstrap con seed=42 fijo, mismo
+patron que scripts/discover_context_features_xau.py) -- rerun completo
+del comando de la seccion 2 produce EXACTAMENTE la misma salida
+(verificado ejecutando el script 3 veces durante el desarrollo de esta
+tarea, incluyendo una vez tras corregir un caracter no-ASCII que
+mojibake-aba en la redireccion a archivo en Windows -- el contenido
+numerico no cambio entre corridas, solo el encoding de un caracter de
+puntuacion).
+
+6. Hallazgo central de esta tarea (no anticipado en el discovery)
+----------------------------------------------------------------------
+El modelo diagnostico conjunto unico (seccion C/F del reporte) --
+pnl_r ~ atr_ratio_short_long + is_friday + is_asia + is_long + roc_atr_3
++ closed_ema200_slope + origin_dist_atr -- muestra que `atr_ratio_
+short_long` tiene coeficiente PRACTICAMENTE CERO (coef=-0.0007,
+p=0.9918) una vez controlado simultaneamente por las 3 dimensiones ya
+congeladas + Friday + direccion, pese a que sus correlaciones parciales
+UNO-A-LA-VEZ (controlando por cada dimension por separado) se
+mantenian del mismo orden de magnitud que la RAW (+0.20 a +0.29). Esto
+NO es un artefacto de colinealidad fuerte (max |r| par-a-par = 0.333,
+muy por debajo del umbral 0.8 del proyecto) -- es evidencia genuina de
+que la combinacion de factores ya congelados explica la mayor parte de
+lo que atr_ratio_short_long aportaba marginalmente. `weekday`/Friday, en
+cambio, SI sobrevive esta misma prueba conjunta (coef=-0.1461,
+p=0.0078). Esta asimetria es la base de la decision final
+(TEMPORAL_ONLY_FREEZE en vez de MULTI_COMPONENT_CONTEXT_FREEZE).
+
+7. Suite de tests existente del repo (patron: scripts standalone)
+--------------------------------------------------------------------------
+api/test_start_kill_switch.py .......................... OK (exit 0)
+api/test_start_mt5_validation.py ....................... OK (exit 0)
+execution/src/test_kill_switch.py ...................... OK (exit 0)
+execution/src/test_mt5_validation.py ................... OK (exit 0)
+execution/src/test_operating_day.py .................... OK (exit 0)
+execution/src/test_timestamp_offset.py ................. OK (exit 0)
+scripts/test_release_lib.py ............................ OK (exit 0)
+strategy/test_costs.py ................................. OK (exit 0)
+strategy/test_diagnostics.py ........................... OK (exit 0)
+strategy/test_engine.py ................................ OK (exit 0)
+strategy/test_htf_session.py ........................... OK (exit 0)
+strategy/test_scoring.py ............................... OK (exit 0)
+TOTAL: 12/12 PASS, 0 FAIL
+
+Nota sobre "tests minimos" (seccion 13 del prompt de la tarea): mismo
+patron que BOT-050.1/BOT-049.2 -- assertions inline (check()) dentro
+del script de freeze, no un archivo pytest separado. Los 11 check()
+cubren explicitamente los items 1-2, 3, 4, 5 (no look-ahead: no se
+calcula ninguna feature nueva, todo viene de columnas ya verificadas
+causales en BOT-050.1), 6, 7, 8 (sub-periodos), 10 (rerun determinista),
+11 (ratios coinciden exactamente) de la lista de la seccion 13. El item
+9 (cohorts Friday/Asia exhaustivas) se verifica por construccion
+(np.select con las 4 combinaciones booleanas posibles, sin categoria
+"?" residual -- confirmado por inspeccion, las 4 filas de B1 suman
+143+264+590+1477=2474=N(Universo B)).
+
+8. Multiplicidad -- resumen
+-------------------------------
+36 tests inferenciales declarados como familia unica (secciones A4,
+B1/B2/B3, C de esta tarea). 12/36 significativos a p_raw<0.05, 7/36
+tras correccion Benjamini-Hochberg (q<0.05). Los 7 que sobreviven BH
+incluyen: atr_ratio_short_long Q5 ALL (raw sig, NO sobrevive BH ->
+q=0.088), cohort Friday+non-Asia (ALL/LONG/sub1), Friday fuera de Asia,
+y 3 coeficientes del modelo conjunto (is_friday, roc_atr_3,
+origin_dist_atr). La decision de freeze NO se basa unicamente en estos
+p-valores (ver seccion 4 del prompt de la tarea).
+
+9. git status --short (ANTES del commit de cierre)
+------------------------------------------------------
+?? reports/BOT-050.2-CONTEXT-DEFINITION-FREEZE.md
+?? scripts/freeze_context_definition_xau.py
+(reports/BOT-050.2-context-freeze-evidence.txt y BACKLOG.md se agregan
+despues de escribir este archivo y actualizar el backlog)
+(reports/BOT-050.2-CONTEXT-DEFINITION-FREEZE-EVIDENCE.log NO aparece --
+gitignored por *.log, mismo patron que las 6 tareas anteriores)
+
+10. git diff --stat (ANTES del commit de cierre)
+------------------------------------------------------
+(vacio -- no hay archivos TRACKEADOS modificados todavia; todos los
+cambios de este punto son archivos nuevos sin trackear)
+
+11. Confirmacion de produccion intacta
+------------------------------------------
+$ git diff -- strategy/ execution/ api/ panel/
+(vacio)
+CONFIRMADO: 0 cambios funcionales en strategy/, execution/, api/, panel/.
+
+12. No production changes -- confirmacion explicita
+--------------------------------------------------------
+No se implemento: score 0-100, pesos, thresholds productivos, gates,
+filtros de entrada (`ratio > X`, bloqueo de Friday/Asia/volatilidad),
+cambios de ejecucion, cambios de Config A, cambios de RR, cambios de
+HTF, cambios de logica de señal, cambios de fill, cambios de CVP,
+release/tag, version bump. No se ejecuto BOT-050.3. Definition freeze
+puro -- decide ownership, no optimiza.
