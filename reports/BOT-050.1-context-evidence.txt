@@ -1,0 +1,131 @@
+BOT-050.1 -- Context Feature Discovery, XAU -- Evidencia de ejecucion
+======================================================================
+
+1. Pre-flight
+--------------
+Branch: main
+HEAD inicial: 911a44e7d021dfa7f045cd8e080ed52e2495a50c
+  ("docs: reconcile backlog after BOT-049 economics freeze")
+Working tree inicial: limpio (git status --short vacio antes de empezar)
+Dataset: backtests/data/XAUUSDc_M5_latest.parquet -- 100505 barras M5,
+  2025-04-14 18:50:03 UTC .. 2026-09-15 00:40:03 UTC
+Config A: ema_periods=12, periodos_htf_min=800, buf_bp=0.4, rr=1.0
+  (identica a BOT-024.1/BOT-024.2/BOT-047.1/BOT-048.1/BOT-049.1)
+Cuenta MT5 (solo lectura): login=163110378 server=Exness-MT5Real22
+Discrepancia documentada en pre-flight: el prompt de la tarea nombraba
+  `backtests/analyze_context_features.py` como ruta del script; el patron
+  REAL del repo (BOT-024.2/BOT-047.1/BOT-048.1/BOT-049.1) es
+  `scripts/discover_<dimension>_features_xau.py` -- se siguio ese patron
+  real, documentado en el reporte seccion 3.
+
+2. Comando de ejecucion
+------------------------
+.venv/Scripts/python.exe scripts/discover_context_features_xau.py \
+    > reports/BOT-050.1-CONTEXT-FEATURE-DISCOVERY-EVIDENCE.log 2>&1
+Exit code: 0
+
+3. Universos y counters (verificados, no asumidos)
+----------------------------------------------------
+run_backtest() real: 2474 trades cerrados
+  counters=Counters(n_sig=4285, n_fill=2474, n_win=1220, n_loss=1251,
+                     n_none=732, n_open_timeout=3, n_skip_stop=4,
+                     n_skip_concurrency=1074)
+Shadow replay: counters IDENTICOS (8/8 campos) + 2474/2474 trades
+  identicos en TODOS los campos clave (direction/entry_bar/exit_bar/
+  outcome/pnl_usd/pnl_r/nights_held) -- 0 discrepancias.
+Universo A (LIMITS): 3207 (LONG=1534, SHORT=1673) -- esperado 3207, OK
+Universo B (FILLED_CLOSED): 2474 -- esperado 2474, OK
+  (identico a BOT-024.2/BOT-047.1/BOT-048.1/BOT-049.1, mismo motor/
+   dataset/Config A)
+
+4. Verificacion causal empirica
+---------------------------------
+Re-slice [:b+1] sobre 41 eventos distribuidos en el tiempo, recalculando
+desde cero: shadow replay completo + ATR short(14)/long(160) + ADX(14) +
+RSI(14) + EMA(12). 0 discrepancias en los 41 eventos muestreados.
+
+5. Assertions inline (check()) del script
+--------------------------------------------
+PASS: 22/22
+FAIL: 0/22
+(Ver detalle completo en reports/BOT-050.1-CONTEXT-FEATURE-DISCOVERY-
+EVIDENCE.log -- archivo *.log, gitignored por *.log en .gitignore,
+igual que BOT-024.2/BOT-047.1/BOT-047.2/BOT-047.2.1/BOT-047.2.2/
+BOT-047.2.3/BOT-048.1/BOT-048.2/BOT-049.1/BOT-049.2 -- reproducible
+re-ejecutando el comando de la seccion 2, no se fuerza su commit,
+mismo patron establecido por las tareas anteriores.)
+
+6. Determinismo
+-----------------
+rerun de atr_wilder(14)/atr_wilder(160)/atr_wilder(288)/adx_wilder(14)/
+strategy.scoring.rsi(14) sobre el array completo produce EXACTAMENTE
+los mismos valores que la primera corrida (np.array_equal con
+equal_nan=True) -- PASS.
+
+7. Checksums (SHA-256) de los artefactos generados
+------------------------------------------------------
+d2ff1721339cbb5dcc932762a88dde99599d7af6e2e9b986d9451ae02a398d6  reports/BOT-050.1-context-limits-xau.csv
+3e7a0bbfd783092116b3386542cc737bb9bfee489267a86914cf20d3e56c853  reports/BOT-050.1-context-trades-xau.csv
+477d5a84884c2a87dd14af6ebe0e9b7c24d847c6876f27f83e72ab2598d0196  scripts/discover_context_features_xau.py
+
+8. Suite de tests existente del repo (patron: scripts standalone, no
+   pytest -- mismo patron que BOT-047.1/BOT-048.1/BOT-049.1/BOT-049.2)
+--------------------------------------------------------------------------
+api/test_start_kill_switch.py .......................... OK (exit 0)
+api/test_start_mt5_validation.py ....................... OK (exit 0)
+execution/src/test_kill_switch.py ...................... OK (exit 0)
+execution/src/test_mt5_validation.py ................... OK (exit 0)
+execution/src/test_operating_day.py .................... OK (exit 0)
+execution/src/test_timestamp_offset.py ................. OK (exit 0)
+scripts/test_release_lib.py ............................ OK (exit 0)
+strategy/test_costs.py ................................. OK (exit 0)
+strategy/test_diagnostics.py ........................... OK (exit 0)
+strategy/test_engine.py ................................ OK (exit 0)
+strategy/test_htf_session.py ........................... OK (exit 0)
+strategy/test_scoring.py ............................... OK (exit 0)
+TOTAL: 12/12 PASS, 0 FAIL
+
+Nota sobre "tests minimos" (seccion 16 del prompt de la tarea): el
+patron establecido por BOT-024.2/BOT-047.1/BOT-048.1/BOT-049.1/BOT-049.2
+NO crea un archivo pytest separado para los scripts de discovery --
+usa assertions inline (funcion check()) dentro del propio script de
+discovery, cada una imprimiendo PASS/FAIL y agregandose a un exit code
+final. Esta tarea sigue ese mismo patron exacto (documentado en el
+reporte, seccion 3) en vez de introducir una convencion nueva. Los 22
+check() de esta tarea cubren explicitamente: causal indexing (secciones
+G), no uso de barras futuras (seccion G, re-slice empirico), warm-up de
+ATR short/long (seccion H, cobertura reportada), determinismo (seccion
+H), Universo A/B counts (seccion H), particion LONG/SHORT y sub-periodo
+(secciones L/M, no vía check() sino vía las tablas con IC exigidas por
+el enunciado), paridad shadow replay/produccion (seccion D, 8/8
+counters + 2474/2474 trades), y ausencia de infinitos/duplicados
+(seccion H).
+
+9. git status --short (ANTES del commit de cierre)
+------------------------------------------------------
+?? reports/BOT-050.1-CONTEXT-FEATURE-DISCOVERY.md
+?? reports/BOT-050.1-context-limits-xau.csv
+?? reports/BOT-050.1-context-trades-xau.csv
+?? scripts/discover_context_features_xau.py
+(reports/BOT-050.1-context-evidence.txt y BACKLOG.md se agregan
+despues de escribir este archivo y actualizar el backlog)
+(reports/BOT-050.1-CONTEXT-FEATURE-DISCOVERY-EVIDENCE.log NO aparece --
+gitignored por *.log, mismo patron que las 10 tareas anteriores)
+
+10. git diff --stat (ANTES del commit de cierre)
+------------------------------------------------------
+(vacio -- no hay archivos TRACKEADOS modificados todavia; todos los
+cambios de este punto son archivos nuevos sin trackear, ver seccion 9)
+
+11. Confirmacion de produccion intacta
+------------------------------------------
+$ git diff -- strategy/ execution/ api/ panel/
+(vacio)
+CONFIRMADO: 0 cambios funcionales en strategy/, execution/, api/, panel/.
+
+12. No production changes -- confirmacion explicita
+--------------------------------------------------------
+No se implemento: score 0-100, pesos, thresholds productivos, gates,
+filtros de entrada, cambios de ejecucion, cambios de Config A, cambios
+de RR, cambios de HTF, cambios de logica de señal, cambios de fill,
+cambios de CVP, release/tag, version bump. Discovery puro.

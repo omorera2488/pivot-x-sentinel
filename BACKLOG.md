@@ -644,7 +644,7 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
 
 ### BOT-050 — Context
 - **Categoría:** Scoring / Investigación
-- **Estado:** TODO (feature padre — no se marca `IN PROGRESS` hasta que `BOT-050.1` arranque)
+- **Estado:** IN PROGRESS / RESEARCH (feature padre — refleja el estado agregado de sus subtareas, ver abajo; no se marca `DONE` hasta tener OOS validado o un `NO_VALID_CONTEXT_FREEZE` explícito)
 - **Prioridad:** HIGH
 - **Incorporado:** 2026-09-20
 - **Versión objetivo:** N/A — investigación offline
@@ -652,29 +652,32 @@ BOT-031 permanece `BLOCKED` porque actualmente no existe una segunda PC/terminal
   - **Candidatos futuros a evaluar en `BOT-050.1`** (mencionados aquí solo como referencia, ninguno promovido automáticamente — el discovery deberá clasificarlos): datos ya estudiados descriptivamente en `BOT-045` — sesión, hora/día, ATR/volatilidad, ADX, RSI (cuando corresponda semánticamente a Context y no ya cubierto por Momentum/Alignment), distancia a EMA, régimen, contexto condicional LONG/SHORT, y otras variables ambientales causales. `BOT-045` en sí permanece `DONE` sin cambios — `BOT-050.1` no reabre ni reinterpreta ese hallazgo, solo puede reutilizarlo como antecedente.
   - **Candidata explícita registrada por `BOT-049.1` (2026-09-21):** **Relative Volatility / Volatility Compression-Expansion** — ratio causal `ATR_short / ATR_long`, con períodos short/long a definir mediante diseño disciplinado en `BOT-050.1` (no optimizados por grid search ni elegidos en `BOT-049.1`, que la excluyó explícitamente de Economics por describir régimen/compresión-expansión ambiental, no geometría económica intrínseca del setup — ver `reports/BOT-049.1-ECONOMICS-FEATURE-DISCOVERY.md` sección 11.4).
   - **Estructura interna:** sigue la misma subestructura `.1/.2/.3` — ver `BOT-050.1` a continuación.
+  - **Resultado de `BOT-050.1` (2026-09-21):** discovery completo — dos candidatos avanzan a revisión de freeze (`atr_ratio_short_long`, `weekday`/Viernes), el resto queda `CROSS_FACTOR_ONLY`/`REJECT_REDUNDANT`/`REJECT_UNSTABLE` — ver esa entrada para el detalle completo.
 - **Dependencias:** BOT-024 (marco conceptual de Signal Quality), BOT-045 (antecedente descriptivo, reutilizado sin reinterpretar).
 - **Subtareas:**
-  - `BOT-050.1` `TODO — NEXT ACTIVE` — Context Feature Discovery (no iniciada — siguiente trabajo activo del proyecto tras el cierre de `BOT-049`).
-  - `BOT-050.2` `TODO` — Context Definition Freeze (no iniciada).
+  - `BOT-050.1` `DONE` — Context Feature Discovery.
+  - `BOT-050.2` `TODO — NEXT ACTIVE` — Context Definition Freeze.
   - `BOT-050.3` `TODO — PENDING / WAITING GENUINE OOS` — Context OOS Validation (no iniciada; podría pasar a `NO CONTRACT TO VALIDATE` si `BOT-050.2` concluyera `NO_VALID_CONTEXT_FREEZE`, ver esa entrada).
 
 ### BOT-050.1 — Context Feature Discovery
 - **Categoría:** Scoring / Investigación
-- **Estado:** TODO — NEXT ACTIVE
+- **Estado:** DONE
 - **Prioridad:** HIGH
 - **Incorporado:** 2026-09-20
 - **Versión objetivo:** N/A — investigación offline
-- **Descripción:** Subtarea de `BOT-050` (Context). Investigará qué variables ambientales/de mercado observables, causales y reproducibles existen en el momento de creación del LIMIT (ver candidatos de referencia en `BOT-050`, incluida `ATR_short/ATR_long` reservada explícitamente por `BOT-049.1`/`BOT-049.2`). No promueve automáticamente ninguna variable de `BOT-045` — las clasificará con el mismo rigor causal que `BOT-048.1`/`BOT-049.1`. **No ejecutada en esta actualización de backlog** — es el siguiente trabajo activo del proyecto tras el cierre de `BOT-049` (`NO_VALID_ECONOMICS_FREEZE`).
-- **Dependencias:** BOT-050 (feature padre), BOT-045 (antecedente).
+- **Descripción:** Subtarea de `BOT-050` (Context). Investigó qué variables ambientales/de mercado observables, causales y reproducibles existen en el momento de creación del LIMIT (ver candidatos de referencia en `BOT-050`, incluida `ATR_short/ATR_long` reservada explícitamente por `BOT-049.1`/`BOT-049.2`). `OFFLINE / DISCOVERY / NO PRODUCTION CHANGES / NO SCORE / NO GATE` — mismo tipo de disciplina que `BOT-048.1`/`BOT-049.1` (shadow replay exhaustivo + verificación causal empírica antes de interpretar cualquier resultado).
+- **Resultado (2026-09-21):** Universo A = 3.207 LIMITS creados (LONG=1.534, SHORT=1.673), Universo B = 2.474 trades filled+cerrados — idéntico al Universo A/B de `BOT-024.2`/`BOT-047.1`/`BOT-048.1`/`BOT-049.1` (mismo motor/dataset/Config A, shadow replay exhaustivo, 0 discrepancias en 8/8 counters y 2.474/2.474 trades; re-slice causal empírico de 41 eventos sobre TODOS los indicadores nuevos —ATR short/long, ADX, RSI, EMA—, 0 discrepancias). **Hallazgo metodológico central:** dos familias mínimas obligatorias del enunciado (RSI, y en parte volatilidad ATR-normalizada) ya habían sido calculadas, sin congelar, dentro del propio discovery de Momentum (`BOT-024.2`) — `rsi_now` (idéntico bit-a-bit a `rsi_level_m5` de esta tarea, ρ=+1.000) y `atr_pct`/`atr14`/`atr5_atr20_ratio` (familia relacionada con `atr_ratio_short_long`, ρ=+0.44 a +0.67); `BOT-024.3` incluso etiquetó `atr_pct` explícitamente como "contexto de volatilidad" — evidencia independiente de que el backlog acertó al reservar esa familia para Context. **7 familias de candidatos evaluadas:** volatilidad relativa (`atr_ratio_short_long` = ATR(14)/ATR(160), primario, y variante de robustez ATR(14)/ATR(288), ambos períodos reusados de constantes YA canónicas del proyecto —`periodos_htf_min`/5 y `D1_WINDOW_MIN`/5—, sin grid search), sesión (`SESSION_BOUNDS_UTC` reusado verbatim), hora del día (continua + codificación cíclica), día de semana, ADX(14) M5 (fuerza de tendencia, no direccional), distancia a la EMA de señal M5 (`dist_ema_m5_atr`) y nivel de RSI(14) M5. **Clasificación final:** `atr_ratio_short_long` y `weekday`(Viernes) `ADVANCE_TO_FREEZE_REVIEW` (evidencia moderada, consistente en 2/3 sub-períodos, sin inversión LONG/SHORT, redundancia cruzada máxima +0.38-0.46 muy por debajo del umbral fuerte del proyecto); `session_utc`(Asia) `CROSS_FACTOR_ONLY` (se solapa temporalmente con el efecto de Viernes, deep-dive conjunto pendiente en `BOT-050.2`); `atr_regime_bucket`/`atr_pct_rank_causal` `CROSS_FACTOR_ONLY` (representaciones secundarias del mismo `atr_ratio_short_long`, ρ≥0.96); `dist_ema_m5_atr` `EXECUTION_FILL_QUALITY`/`REJECT_REDUNDANT` (predictor fuerte de fill —ρ=−0.40— pero débil de outcome —ρ=+0.06—, correlación moderada +0.46 con Momentum `roc_atr_3`); `adx_m5` `REJECT_UNSTABLE` (el efecto solo sobrevive en el agregado ALL, desaparece al partir LONG/SHORT); `rsi_level_m5` `REJECT_REDUNDANT` (identidad exacta ρ=+1.000 con `rsi_now` de Momentum, ya calculada sin congelar; patrón que se invierte de qué extremo de la distribución es peor entre sub1/sub3); `hour_utc_cont`/cíclico `REJECT_UNSTABLE` (screening prácticamente nulo). Ningún score/peso/gate implementado — discovery puro, cero cambios de producción (verificado por `git diff --stat`; 12/12 tests de la suite existente OK). **No se congela ningún contrato** — `BOT-050.2` debe decidir con el mismo rigor de `BOT-047.2`/`BOT-048.2`/`BOT-049.2` si `atr_ratio_short_long` y/o `weekday` sobreviven una revisión más profunda, siendo válido que concluya `NO_VALID_CONTEXT_FREEZE`. **Reporte completo (documento maestro, autocontenido):** `reports/BOT-050.1-CONTEXT-FEATURE-DISCOVERY.md`. Script: `scripts/discover_context_features_xau.py`. Evidence log: `reports/BOT-050.1-CONTEXT-FEATURE-DISCOVERY-EVIDENCE.log`. Evidencia de comandos/checksums: `reports/BOT-050.1-context-evidence.txt`. Datasets: `reports/BOT-050.1-context-limits-xau.csv` (Universo A), `reports/BOT-050.1-context-trades-xau.csv` (Universo B).
+- **Siguiente paso planificado dentro de BOT-050 (ver `BOT-050.2`):** revisión humana/formal de `atr_ratio_short_long` y `weekday`(Viernes) — pendiente, no ejecutada en esta tarea.
+- **Dependencias:** BOT-050 (feature padre), BOT-045 (antecedente), BOT-024.2 (redundancia cruzada, `rsi_now`/`atr_pct`/`atr14`/`atr5_atr20_ratio` ya calculadas sin congelar), BOT-048.2 (`origin_dist_atr`, Structure, reconfirmado sin modificar), BOT-047.1 (`closed_ema200_slope`, Alignment, reconfirmado sin modificar).
 
 ### BOT-050.2 — Context Definition Freeze
 - **Categoría:** Scoring / Investigación / Definición formal
-- **Estado:** TODO
+- **Estado:** TODO — NEXT ACTIVE
 - **Prioridad:** HIGH
 - **Incorporado:** 2026-09-20
 - **Versión objetivo:** N/A — investigación offline, sin release de producción
-- **Descripción:** Subtarea de `BOT-050`, sucesora de `BOT-050.1`. Congelará la representación de Context con el mismo criterio (semántica/causalidad/interpretabilidad/reproducibilidad/no-redundancia/robustez, no solo performance) que `BOT-047.2`/`BOT-048.2`/`BOT-049.2`. No se ejecuta hasta que `BOT-050.1` esté `DONE`.
-- **Dependencias:** BOT-050.1.
+- **Descripción:** Subtarea de `BOT-050`, sucesora de `BOT-050.1`. Congelará la representación de Context con el mismo criterio (semántica/causalidad/interpretabilidad/reproducibilidad/no-redundancia/robustez, no solo performance) que `BOT-047.2`/`BOT-048.2`/`BOT-049.2`. Debe decidir sobre los dos candidatos que `BOT-050.1` clasificó `ADVANCE_TO_FREEZE_REVIEW` (`atr_ratio_short_long` y `weekday`/Viernes, con `session_utc`/Asia como posible mecanismo compartido a resolver) — es un resultado válido que concluya `NO_VALID_CONTEXT_FREEZE`, análogo a `BOT-049.2`. **Siguiente trabajo activo del proyecto tras el cierre de `BOT-050.1`.**
+- **Dependencias:** BOT-050.1 (`DONE`, shortlist: `atr_ratio_short_long`, `weekday`/Viernes).
 
 ### BOT-050.3 — Context Out-of-Sample Validation
 - **Categoría:** Scoring / Investigación / Validación
