@@ -299,7 +299,13 @@ def divergence_score(direction: int, close: np.ndarray, rsi_values: np.ndarray, 
 def _closed_blocks(time_utc: np.ndarray, high: np.ndarray, low: np.ndarray, window_min: int):
     """Un (bucket_id, high_final, low_final) por cada bloque HTF ya CERRADO
     (el ultimo bloque, todavia en formacion, se excluye a proposito -- puede
-    seguir creciendo)."""
+    seguir creciendo). Deteccion de cierre por division entera NAIVE desde la
+    epoca Unix (`time_utc // bucket_len_s`) -- distinta del ancla de sesion
+    canonica que usa la señal real (`bucket_start_utc_seconds`, ver
+    `_closed_blocks_session_anchored` mas abajo). Es el boundary "legacy" que
+    ya usaba este modulo para Tendencia (BOT-023) antes de BOT-051.4 -- no se
+    modifica aca (BOT-051.4 lo reusa tal cual para el lado B0/legacy de
+    Alignment, ver strategy/signal_quality.py)."""
     from .engine import bucket_levels  # import diferido: evita ciclo import si engine llegara a usar scoring
 
     bucket_len_s = window_min * 60
@@ -310,6 +316,38 @@ def _closed_blocks(time_utc: np.ndarray, high: np.ndarray, low: np.ndarray, wind
     for i in range(n - 1):
         if bucket_id[i] != bucket_id[i + 1]:
             blocks.append((bucket_id[i], resistencia[i], soporte[i]))
+    return blocks
+
+
+def _closed_blocks_session_anchored(time_utc: np.ndarray, high: np.ndarray, low: np.ndarray, window_min: int):
+    """Misma forma/semantica que `_closed_blocks()` (bloque HTF ya CERRADO,
+    excluye el ultimo en formacion) pero detecta el cierre con el ancla de
+    SESION CANONICA (`htf_session.bucket_start_utc_seconds` -- el mismo
+    boundary que `engine.py`/`live_signal.py` ya usan para la señal HTF real),
+    no la division entera naive de `_closed_blocks()`. Reusa
+    `engine.bucket_levels()` sin modificar (su high/low corrido ya esta
+    acotado por el ancla canonica); solo cambia que indices de barra se tratan
+    como transicion de bloque.
+
+    Agregado en BOT-051.4 para poder calcular Alignment (`BOT-047.2.3`,
+    Structural Alignment Consensus) en produccion -- ese contrato necesita
+    DOS boundaries D1 distintos (B0 legacy == `_closed_blocks`, B1 canonico ==
+    esta funcion), reusando la MISMA `_classify_sequence()` de abajo para
+    ambos. Mismo criterio de agrupamiento que
+    scripts/discover_d1_alignment_features_xau.py::build_d1_history (maximo/
+    minimo por bloque de sesion cerrado, ultimo bloque posiblemente abierto
+    excluido) -- verificado por test de paridad, ver
+    reports/BOT-051.4-signal-quality-live-parity-xau.csv."""
+    from .engine import bucket_levels
+    from .htf_session import bucket_start_utc_seconds
+
+    resistencia, soporte = bucket_levels(time_utc, high, low, window_min)
+    n = len(time_utc)
+    bucket_start = np.array([bucket_start_utc_seconds(int(t), window_min) for t in time_utc])
+    blocks = []
+    for i in range(n - 1):
+        if bucket_start[i] != bucket_start[i + 1]:
+            blocks.append((bucket_start[i], resistencia[i], soporte[i]))
     return blocks
 
 

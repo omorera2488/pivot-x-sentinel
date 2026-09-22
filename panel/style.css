@@ -213,6 +213,24 @@ summary { cursor: pointer; color: var(--muted); }
   color: var(--muted);
 }
 
+/* Signal Quality (BOT-051.4): vector crudo dentro del MISMO popover que la
+   calificación -- deliberadamente SIN clases .ok/.bad ni ningún otro color
+   que implique un ranking entre estados/factores (no hay score, no hay
+   pesos, no hay "bueno/malo" definido todavía -- ver
+   reports/BOT-051.2-signal-quality-definition-freeze.md sección 11). */
+.sq-section {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--card-border);
+}
+.sq-title { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 6px; }
+.sq-row { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.sq-row:last-child { margin-bottom: 0; }
+.sq-row span { color: var(--muted); }
+.sq-row b { font-weight: 600; font-size: 12px; }
+.sq-unavailable { color: var(--muted); font-style: italic; }
+.sq-direction { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--card-border); }
+
 @media (max-width: 850px) {
   .grid, .config-grid, .totals { grid-template-columns: 1fr 1fr; }
   .toolbar { flex-wrap: wrap; }

@@ -52,6 +52,7 @@ from strategy.engine import StrategyParams
 from strategy.live_signal import LiveSignalEngine
 from strategy.profiles import get_profile, normalize_profile_name
 from strategy import scoring
+from strategy import signal_quality as sq
 
 from .mt5_utils import select_symbol, resolve_symbol, measure_broker_offset_seconds, resolve_filling_mode, mt5_lock
 from .mt5_validation import check_mt5_readiness, MT5NotReadyError
@@ -71,6 +72,17 @@ SCORE_LOOKBACK_BARS = 500
 # Operaciones cerradas minimas de ESTE bot (symbol+magic) antes de confiar en
 # un aciertos% real para el CVP -- ver strategy.scoring.cvp_score.
 AGE_LOOKBACK_DAYS_FOR_ACIERTOS = 365
+
+# BOT-051.4 -- historial pedido para calcular Signal Quality (Momentum/
+# Alignment/Structure/Context, ver strategy/signal_quality.py) en la barra de
+# la señal. Bastante mas largo que SCORE_LOOKBACK_BARS (500, ~1.7 dias) porque
+# Alignment necesita al menos TREND_LOOKBACK_BLOCKS=3 bloques D1 (1440min)
+# YA CERRADOS antes de la barra de señal para poder clasificar -- 15 dias de
+# velas M5 (~4.320 barras) da margen holgado sobre ese minimo sin acercarse a
+# limites de copy_rates_range. Puramente observacional: nunca bloquea
+# _place_order() si falla o si la historia disponible resulta insuficiente
+# (ver _compute_signal_quality()).
+SIGNAL_QUALITY_LOOKBACK_DAYS = 15
 
 
 def _corrected_utc_seconds(raw_time_s: int, offset_seconds: float) -> int:
@@ -141,6 +153,15 @@ class LiveExecutionBot:
 
         self.signal_engine: LiveSignalEngine | None = None
         self._last_processed_time: int | None = None
+        # BOT-051.4 -- contador monotonico de velas cerradas procesadas por
+        # ESTA instancia del bot (incluye replay_startup, ver
+        # process_closed_bar()). Puramente observacional -- alimenta
+        # `observed_at_bar` de SignalQualityVectorV1 (analogo en espiritu al
+        # indice `i` del motor batch, aunque no comparable numericamente
+        # entre sesiones -- lo que SI es comparable entre sesiones es
+        # `observed_at_time_utc`). No participa de ninguna decision de
+        # señal/ejecucion.
+        self._closed_bar_count: int = 0
         self._filling_mode: int | None = None
         self._offset_seconds: float = 0.0
         self._contract_size: float | None = None
@@ -237,6 +258,7 @@ class LiveExecutionBot:
             # y logueandose (uso diagnostico), pero ya no altera esta vela.
             self.signal_engine.process_bar(int(r["time"]),
                                             float(r["high"]), float(r["low"]), float(r["close"]))
+            self._closed_bar_count += 1  # BOT-051.4 -- ver docstring del campo en __init__
         self._last_processed_time = int(closed[-1]["time"])
         self._log(f"Replay: {len(closed)} velas cerradas procesadas ({lookback_min}min de lookback). "
              f"armadoVenta={self.signal_engine.armado_venta} armadoCompra={self.signal_engine.armado_compra}")
@@ -590,6 +612,49 @@ class LiveExecutionBot:
             self._log(f"AVISO: no se pudo calificar la entrada ({e!r}) -- se coloca sin calificacion.")
             return None
 
+    def _compute_signal_quality(self, direction: int, entry: float, raw_bar_time: int):
+        """BOT-051.4 -- calcula el snapshot `SignalQualityVectorV1`
+        (Momentum/Alignment/Structure/Context, ver strategy/signal_quality.py)
+        SOLO para registrarlo -- observacional puro, nunca decide si se opera,
+        nunca cambia entry/stop/target/volumen/expiracion (esos ya estan
+        fijados por `signal`, calculado ANTES de llamar a esta funcion, y esta
+        funcion no los recibe con permiso de modificarlos -- ver
+        process_closed_bar()). Misma disciplina defensiva que `_score_entry()`:
+        cualquier falla (MT5, historial insuficiente) se loguea y devuelve
+        None -- la orden se coloca igual, nunca al reves.
+
+        Pide mas historial que `_score_entry()` (`SIGNAL_QUALITY_LOOKBACK_DAYS`,
+        no `SCORE_LOOKBACK_BARS`) porque Alignment necesita varios bloques D1
+        (1440min) ya cerrados. `entry` es el valor YA calculado por el motor de
+        señal real -- nunca se recalcula aca (Structure lo usa tal cual para
+        `origin_dist_atr`)."""
+        try:
+            dt_to = datetime.fromtimestamp(raw_bar_time, tz=timezone.utc)
+            dt_from = dt_to - timedelta(days=SIGNAL_QUALITY_LOOKBACK_DAYS)
+            rates = mt5.copy_rates_range(self.symbol, self.timeframe, dt_from, dt_to)
+            if rates is None or len(rates) < 20:
+                self._log("AVISO: historial insuficiente para Signal Quality -- se coloca sin snapshot.")
+                return None
+
+            time_utc = rates["time"].astype("int64") - round(self._offset_seconds)
+            high = rates["high"].astype(float)
+            low = rates["low"].astype(float)
+            close = rates["close"].astype(float)
+            b = len(close) - 1
+
+            vector, diag = sq.compute_signal_quality_at_bar(
+                time_utc, high, low, close, b=b, direction=direction, entry=entry,
+                ema_periods=self.params.ema_periods, periodos_htf_min=self.params.periodos_htf_min,
+                observed_at_bar=self._closed_bar_count,
+            )
+            if not diag["structure_replay_matches_signal"]:
+                self._log("AVISO: la ventana de historial de Signal Quality no reprodujo la señal real -- "
+                          "Structure/origin_dist_atr quedan UNAVAILABLE en este snapshot (ver diagnostics).")
+            return vector
+        except Exception as e:
+            self._log(f"AVISO: no se pudo calcular Signal Quality ({e!r}) -- se coloca sin snapshot.")
+            return None
+
     def _place_order(self, direction: int, entry: float, stop: float, target: float) -> int | None:
         """Devuelve el ticket de la orden colocada (None si fue dry_run o si
         el broker la rechazo) -- lo usa process_closed_bar() para asociarle
@@ -649,6 +714,7 @@ class LiveExecutionBot:
 
         prev_bucket = self.signal_engine._cur_bucket
         signal = self.signal_engine.process_bar(t, high, low, close)
+        self._closed_bar_count += 1  # BOT-051.4 -- ver docstring del campo en __init__
         if self.signal_engine._cur_bucket != prev_bucket:
             # _cur_bucket ya es el inicio en segundos unix UTC del bloque
             # (htf_session.bucket_start_utc_seconds(), ver strategy/live_signal.py
@@ -677,9 +743,31 @@ class LiveExecutionBot:
                             f"nodo={entry_score.nodo_score:+d} '{entry_score.nodo_reason}') -- "
                             f"solo se registra, el volumen sigue en fixed_lot."
                         )
+                    # BOT-051.4 -- Signal Quality se calcula ANTES de colocar la
+                    # orden (mismo momento causal que entry_score arriba), usando
+                    # exclusivamente signal.dir/signal.entry ya decididos -- esta
+                    # llamada no puede influir en _place_order() (no recibe stop/
+                    # target/volumen, no devuelve nada que ese metodo lea). Doble
+                    # resguardo defensivo, a proposito (BOT-051.4: "behavior
+                    # invariance -- CRITICO"): _compute_signal_quality() ya
+                    # atrapa sus propias excepciones (misma disciplina que
+                    # _score_entry()), pero el try/except de aca AFUERA
+                    # garantiza que _place_order() se ejecute con los MISMOS
+                    # argumentos incluso si esa garantia interna llegara a
+                    # fallar por un bug futuro -- ver
+                    # execution/src/test_signal_quality_behavior_invariance.py.
+                    try:
+                        signal_quality = self._compute_signal_quality(signal.dir, signal.entry, raw_time)
+                    except Exception as e:
+                        self._log(f"AVISO: Signal Quality fallo de forma inesperada ({e!r}) -- se coloca sin snapshot.")
+                        signal_quality = None
                     ticket = self._place_order(signal.dir, signal.entry, signal.stop, signal.target)
-                    if ticket is not None and entry_score is not None:
-                        score_store.record(self.symbol, self.magic, ticket, entry_score.to_dict())
+                    if ticket is not None and (entry_score is not None or signal_quality is not None):
+                        score_store.record(
+                            self.symbol, self.magic, ticket,
+                            entry_score.to_dict() if entry_score is not None else None,
+                            signal_quality=signal_quality.to_dict() if signal_quality is not None else None,
+                        )
 
         self._last_processed_time = int(r["time"])
 

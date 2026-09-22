@@ -131,10 +131,11 @@ function fmtSigned(n) {
 
 // Calificación de entrada (Divergencia/Tendencia/CVP -- ver strategy/scoring.py):
 // un ícono con un popover CSS que arma el desglose y el motivo de cada factor.
-// scoresMap viene de GET /scores ({ticket: score}); el ticket con el que el
-// bot coloca la orden es el mismo position_id que trae cada deal de /history
-// (ver execution/src/score_store.py) -- sin dato para esa fila, no muestra nada
-// (operaciones previas a esta función, o que el bot nunca llegó a calificar).
+// scoresMap viene de GET /scores ({ticket: {...score, signal_quality}}); el
+// ticket con el que el bot coloca la orden es el mismo position_id que trae
+// cada deal de /history (ver execution/src/score_store.py) -- sin dato para
+// esa fila, no muestra nada (operaciones previas a esta función, o que el
+// bot nunca llegó a calificar).
 function scoreBadge(scoresMap, positionId) {
   const s = scoresMap && scoresMap[positionId];
   if (!s) return "";
@@ -150,15 +151,50 @@ function scoreBadge(scoresMap, positionId) {
       <div class="muted">${escapeHtml(reason)}</div>
     </div>`;
   };
+  const hasTotal = s.total !== undefined;
   return `
     <span class="score-badge">
-      <span class="score-icon ${cls(s.total)}" tabindex="0">ⓘ ${fmtSigned(s.total)}</span>
+      <span class="score-icon ${hasTotal ? cls(s.total) : "muted"}" tabindex="0">ⓘ${hasTotal ? " " + fmtSigned(s.total) : ""}</span>
       <div class="score-pop">
         ${row("Divergencia", s.divergencia_score, s.divergencia_reason)}
         ${row("Tendencia", s.tendencia_score, s.tendencia_reason)}
         ${row("CVP", s.cvp_score, s.cvp_reason)}
         ${row("Nodo", s.nodo_score, s.nodo_reason)}
-        <div class="score-total">Total <b class="${cls(s.total)}">${fmtSigned(s.total)}</b> · el volumen no cambia (fixed_lot)</div>
+        ${hasTotal ? `<div class="score-total">Total <b class="${cls(s.total)}">${fmtSigned(s.total)}</b> · el volumen no cambia (fixed_lot)</div>` : ""}
+        ${signalQualitySection(s.signal_quality)}
       </div>
     </span>`;
+}
+
+// Signal Quality (BOT-051.4, ver strategy/signal_quality.py): vector crudo
+// (Momentum/Alignment/Structure/Context + Direction), SIN score, SIN
+// tiers/colores que impliquen un ranking -- ver
+// reports/BOT-051.2-signal-quality-definition-freeze.md sección 11. Registros
+// sin `signal_quality` (previos a BOT-051.4, o donde el cálculo falló) no
+// muestran esta sección -- nunca "undefined", nunca un valor inventado.
+function signalQualityFactor(label, unit, fo) {
+  if (!fo) return "";
+  if (fo.status !== "AVAILABLE") {
+    return `<div class="sq-row"><span>${label}</span><b class="sq-unavailable">UNAVAILABLE</b></div>`;
+  }
+  // Momentum/Structure son continuos (float) -- 2 decimales solo de
+  // presentación, el valor crudo sigue siendo el que persiste score_store.
+  // Alignment/Context son texto (enum) -- se muestran tal cual, escapados.
+  const shown = typeof fo.value === "number"
+    ? `${fo.value >= 0 ? "+" : ""}${fo.value.toFixed(2)}${unit ? " " + unit : ""}`
+    : escapeHtml(String(fo.value));
+  return `<div class="sq-row"><span>${label}</span><b>${shown}</b></div>`;
+}
+
+function signalQualitySection(sq) {
+  if (!sq) return "";
+  return `
+    <div class="sq-section">
+      <div class="sq-title">Signal Quality</div>
+      ${signalQualityFactor("Momentum", "ATR / 3 velas", sq.momentum)}
+      ${signalQualityFactor("Alignment", "", sq.alignment)}
+      ${signalQualityFactor("Structure", "ATR", sq.structure)}
+      ${signalQualityFactor("Context", "", sq.context)}
+      <div class="sq-row sq-direction"><span>Direction</span><b>${escapeHtml(sq.direction || "--")}</b></div>
+    </div>`;
 }

@@ -15,7 +15,15 @@ para una orden pendiente es el mismo que MT5 usa despues como ticket de la
 posicion al llenarse (bot.py:_reconcile() ya asume esto), y ese valor es el
 `position_id` que trae cada deal de /history -- por eso ESTE modulo indexa
 por ese mismo ticket, sin traducir nada.
-"""
+
+BOT-051.4: agrega un campo opcional `signal_quality` (snapshot inmutable de
+`strategy.signal_quality.SignalQualityVectorV1`, serializado via `.to_dict()`)
+a la MISMA linea/ticket, junto al `score` ya existente -- no un archivo
+aparte, no una reescritura del formato. Backward-compatible por construccion:
+una linea vieja simplemente no tiene la clave `signal_quality` (`load_all()`
+la completa con `None`); `record()` sigue aceptando `signal_quality=None`
+(default) para cualquier llamador que no lo pase, sin cambiar el
+comportamiento de `score` en absoluto."""
 from __future__ import annotations
 
 import json
@@ -34,22 +42,36 @@ def _store_path(symbol: str, magic: int) -> Path:
     return DATA_DIR / f"{safe_symbol}_{magic}.jsonl"
 
 
-def record(symbol: str, magic: int, ticket: int, entry_score: dict) -> None:
-    """Agrega una linea {ticket, score:{...}} al archivo del symbol+magic.
-    Si dos tickets se repiten (no deberia pasar -- MT5 no reusa tickets), la
-    lectura (load_all) se queda con la ULTIMA linea de ese ticket."""
+def record(symbol: str, magic: int, ticket: int, entry_score: dict | None,
+           signal_quality: dict | None = None) -> None:
+    """Agrega una linea {ticket, score:{...}, signal_quality:{...}} (esta
+    ultima clave solo si se paso) al archivo del symbol+magic. `entry_score`
+    puede ser None (ej. si solo se pudo calcular Signal Quality) -- en ese
+    caso la linea no lleva `score`, igual que antes no llevaba
+    `signal_quality`. Si dos tickets se repiten (no deberia pasar -- MT5 no
+    reusa tickets), la lectura (load_all) se queda con la ULTIMA linea de ese
+    ticket."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     path = _store_path(symbol, magic)
-    row = {"ticket": ticket, "score": entry_score}
+    row: dict = {"ticket": ticket}
+    if entry_score is not None:
+        row["score"] = entry_score
+    if signal_quality is not None:
+        row["signal_quality"] = signal_quality
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
 def load_all(symbol: str, magic: int) -> dict[int, dict]:
-    """ticket -> score (dict, tal cual EntryScore.to_dict()). Lineas
-    corruptas o incompletas (ej. un crash a mitad de escritura) se ignoran en
-    vez de romper toda la lectura -- es un registro de conveniencia para el
-    panel, no una fuente critica."""
+    """ticket -> {**score_fields, "signal_quality": {...} | None}. Los campos
+    de `score` (tal cual EntryScore.to_dict()) siguen quedando al nivel
+    superior -- comportamiento IDENTICO al de antes de BOT-051.4 para
+    cualquier lector existente de esos campos (ej. panel/app.js::scoreBadge()).
+    `signal_quality` es una clave nueva, siempre presente (None para
+    registros que no lo tienen -- viejos, o nuevos donde solo se pudo
+    calificar la entrada). Lineas corruptas o incompletas (ej. un crash a
+    mitad de escritura) se ignoran en vez de romper toda la lectura -- es un
+    registro de conveniencia para el panel, no una fuente critica."""
     path = _store_path(symbol, magic)
     if not path.exists():
         return {}
@@ -61,7 +83,8 @@ def load_all(symbol: str, magic: int) -> dict[int, dict]:
                 continue
             try:
                 row = json.loads(line)
-                out[int(row["ticket"])] = row["score"]
+                ticket = int(row["ticket"])
+                out[ticket] = {**row.get("score", {}), "signal_quality": row.get("signal_quality")}
             except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                 continue
     return out

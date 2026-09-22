@@ -302,11 +302,19 @@ def orders(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC):
 def scores(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC):
     """Calificacion (Divergencia/Tendencia/CVP, ver strategy/scoring.py) de
     cada orden colocada por el bot, leida del registro local (ver
-    execution/src/score_store.py) -- {ticket: score}. El panel la cruza con
-    /history por position_id (mismo valor que el ticket con el que se
-    colocó la orden -- ver docstring de score_store). Separado de /history
-    (que refleja 1:1 lo que MT5 devuelve) igual que /events ya esta
-    separado, en vez de mezclarlo ahi."""
+    execution/src/score_store.py) -- {ticket: {...score, signal_quality}}.
+    El panel la cruza con /history por position_id (mismo valor que el
+    ticket con el que se colocó la orden -- ver docstring de score_store).
+    Separado de /history (que refleja 1:1 lo que MT5 devuelve) igual que
+    /events ya esta separado, en vez de mezclarlo ahi.
+
+    `signal_quality` (BOT-051.4): snapshot observacional de
+    `strategy.signal_quality.SignalQualityVectorV1` (Momentum/Alignment/
+    Structure/Context + direction), calculado y congelado al nacer la LIMIT
+    -- puramente informativo, nunca participa en la decision de operar.
+    `None` en registros previos a BOT-051.4 o donde el calculo no pudo
+    completarse (ver docstring de _compute_signal_quality en
+    execution/src/bot.py)."""
     sym = _resolve_query_symbol(symbol)
     return score_store.load_all(sym, magic)
 
