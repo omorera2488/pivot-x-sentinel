@@ -198,3 +198,37 @@ function signalQualitySection(sq) {
       <div class="sq-row sq-direction"><span>Direction</span><b>${escapeHtml(sq.direction || "--")}</b></div>
     </div>`;
 }
+
+// Tarjeta de acumulación OOS de Signal Quality (BOT-051.5) -- GET
+// /signal-quality/oos-status. Solo conteos/estados de readiness
+// (NO_DATA/ACCUMULATING/READY_FOR_OOS_ANALYSIS) -- sin score, sin colores de
+// calidad, sin recomendaciones, sin gate.
+function renderSignalQualityOos(status) {
+  const el = document.getElementById("sqOosCard");
+  if (!el) return;
+  if (!status) {
+    el.innerHTML = `<p class="muted">No disponible.</p>`;
+    return;
+  }
+  const r = status.readiness || {};
+  const sr = status.structure_replay || {};
+  const factorRow = (label, state) => `
+    <div class="sq-oos-readiness-item">
+      <span>${label}</span>
+      <b>${escapeHtml(state || "NO_DATA")}</b>
+    </div>`;
+  el.innerHTML = `
+    <div class="sample-grid">
+      <div class="sample-item"><span>LIMITs reales (desde ${fmtLocalDateTime(Math.floor(new Date(status.accumulation_start_utc).getTime() / 1000))})</span><b>${status.genuine_live_limits ?? 0}</b></div>
+      <div class="sample-item"><span>Cerradas / evaluables</span><b>${status.evaluable_closed_trades ?? 0}</b></div>
+      <div class="sample-item"><span>Signal Quality completo</span><b>${status.full_sq_available ?? 0} / ${status.genuine_live_limits ?? 0}</b></div>
+      <div class="sample-item"><span>Structure replay</span><b>${sr.match ?? 0} match / ${sr.mismatch ?? 0} mismatch</b></div>
+    </div>
+    <div class="sq-oos-readiness">
+      ${factorRow("Momentum", r.momentum)}
+      ${factorRow("Alignment", r.alignment)}
+      ${factorRow("Structure", r.structure)}
+      ${factorRow("Context", r.context)}
+    </div>
+    <div class="sq-oos-note">Observacional -- sin score, sin gate. La acumulación ocurre en paralelo, sin bloquear el desarrollo.</div>`;
+}

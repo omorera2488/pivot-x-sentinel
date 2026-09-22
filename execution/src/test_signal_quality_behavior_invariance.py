@@ -22,6 +22,7 @@ Uso:
     python execution/src/test_signal_quality_behavior_invariance.py
 """
 import sys
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -119,9 +120,20 @@ fake = FakeMT5()
 sys.modules["MetaTrader5"] = fake  # ANTES de importar execution.src.bot
 
 from execution.src.bot import LiveExecutionBot  # noqa: E402
+from execution.src import score_store  # noqa: E402
 from strategy.live_signal import LiveSignalEngine  # noqa: E402
 
 FAILURES: list[str] = []
+
+# BOT-051.5 -- bug encontrado y corregido: esta prueba llama a
+# process_closed_bar(), que en el camino real llega a score_store.record().
+# Sin aislar DATA_DIR (mismo patron que execution/src/test_score_store.py),
+# las escrituras de ESTA prueba caian en el archivo JSONL real del usuario
+# (execution/data/scores/*.jsonl) -- se encontraron y limpiaron 5 lineas de
+# contaminacion (tickets 500000/500001) mezcladas con datos reales de
+# produccion. Nunca mas: se aisla SIEMPRE a un directorio temporal.
+_tmp_scores_dir = tempfile.TemporaryDirectory()
+score_store.DATA_DIR = Path(_tmp_scores_dir.name)
 
 
 def check(label: str, condition: bool, evidence: str = "") -> None:

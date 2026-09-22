@@ -40,6 +40,7 @@ from execution.src.paths import app_root
 from execution.src.version import get_version
 from execution.src import score_store
 from execution.src import kill_switch, kill_switch_store, operating_day
+from execution.src.signal_quality_oos_dataset import oos_status_summary
 from strategy.profiles import PROFILES
 
 app = FastAPI(title="pivot-x-sentinel API", version=get_version())
@@ -317,6 +318,22 @@ def scores(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC):
     execution/src/bot.py)."""
     sym = _resolve_query_symbol(symbol)
     return score_store.load_all(sym, magic)
+
+
+@app.get("/signal-quality/oos-status")
+def signal_quality_oos_status(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC):
+    """BOT-051.5 -- estado de acumulacion OOS de Signal Quality: cuantas
+    LIMITs reales existen desde el freeze de `BOT-051.4`, cuantas ya tienen
+    resultado evaluable, disponibilidad por factor, coverage, y readiness
+    (`NO_DATA`/`ACCUMULATING`/`READY_FOR_OOS_ANALYSIS` -- nunca `PASS`/`FAIL`/
+    `OOS_VALIDATED`, ver `execution/src/signal_quality_oos_dataset.py`).
+
+    100% read-only respecto a MT5 -- solo lee los JSONL ya persistidos por
+    `score_store`/`outcome_store` (la reconciliacion en si corre en el loop
+    del bot, `LiveExecutionBot._run_signal_quality_oos_bridge()`, no aca).
+    Sin score, sin colores de calidad, sin gate -- solo observabilidad."""
+    sym = _resolve_query_symbol(symbol)
+    return oos_status_summary(sym, magic)
 
 
 @app.get("/history")

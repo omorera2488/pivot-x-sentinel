@@ -81,6 +81,11 @@
     <div class="events-list" id="eventsList">Cargando…</div>
   </div>
 
+  <div class="card wide3">
+    <div class="label">Signal Quality — Acumulación OOS</div>
+    <div class="sq-oos" id="sqOosCard">Cargando…</div>
+  </div>
+
   <div class="card full">
     <div class="label">Últimas 20 operaciones</div>
     <table>
@@ -244,6 +249,16 @@ async function refresh() {
     renderTradeStats(trades);
     renderEquityCurve(trades);
     renderTradesTable(trades, scores);
+
+    // Signal Quality -- acumulación OOS (BOT-051.5). Aparte del resto (igual
+    // que /scores ya está separado de /history): si esta llamada falla no
+    // debe tirar abajo el resto del refresh.
+    try {
+      const sqOos = await apiGet("/signal-quality/oos-status" + scoresQS);
+      renderSignalQualityOos(sqOos);
+    } catch (sqErr) {
+      renderSignalQualityOos(null);
+    }
   } catch (err) {
     showError("err", err);
     document.getElementById("mt5State").textContent = "CONEXIÓN NO DISPONIBLE";

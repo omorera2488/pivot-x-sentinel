@@ -388,9 +388,33 @@ def compute_signal_quality_at_bar(
         origin_dist_atr=origin_dist_atr,
         weekday=weekday,
     )
+
+    # BOT-051.5 seccion 10 (prioridad) -- razon categorizada de por que cada
+    # factor UNAVAILABLE quedo asi, para telemetria/coverage -- NUNCA se
+    # persiste dentro de SignalQualityVectorV1 (eso violaria el contrato
+    # congelado), solo viaja en este dict `diagnostics` separado, que
+    # execution/src/bot.py puede loguear/telemetrar sin tocar el snapshot.
+    unavailable_reasons: dict[str, str] = {}
+    if vector.momentum.status == "UNAVAILABLE":
+        unavailable_reasons["momentum"] = "warmup"  # b-3<0 o ATR14 sin converger (b<14)
+    if vector.alignment.status == "UNAVAILABLE":
+        unavailable_reasons["alignment"] = "alignment_history"  # <3 bloques D1 cerrados (B0 y/o B1)
+    if vector.structure.status == "UNAVAILABLE":
+        if origin is None or not atr_ok:
+            unavailable_reasons["structure"] = "warmup"  # sin origen de armado en la ventana, o ATR sin converger
+        elif not replay_matches:
+            unavailable_reasons["structure"] = "structure_replay_mismatch"  # la ventana no reprodujo la señal real
+        else:
+            unavailable_reasons["structure"] = "other"
+    # context: ninguna razon documentada de UNAVAILABLE en su contrato congelado
+    # (time_utc siempre disponible, BOT-050.2) -- no debería ocurrir nunca.
+    if vector.context.status == "UNAVAILABLE":
+        unavailable_reasons["context"] = "other"
+
     diagnostics = {
         "structure_replay_matches_signal": replay_matches,
         "origin_bar": origin["bar"] if origin else None,
         "n_bars_used": len(c),
+        "unavailable_reasons": unavailable_reasons,
     }
     return vector, diagnostics

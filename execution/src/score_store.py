@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from . import provenance
 from .paths import user_data_root
 
 # user_data_root(), NO app_root(): esto tiene que sobrevivir un upgrade del
@@ -43,14 +44,22 @@ def _store_path(symbol: str, magic: int) -> Path:
 
 
 def record(symbol: str, magic: int, ticket: int, entry_score: dict | None,
-           signal_quality: dict | None = None) -> None:
-    """Agrega una linea {ticket, score:{...}, signal_quality:{...}} (esta
-    ultima clave solo si se paso) al archivo del symbol+magic. `entry_score`
-    puede ser None (ej. si solo se pudo calcular Signal Quality) -- en ese
-    caso la linea no lleva `score`, igual que antes no llevaba
-    `signal_quality`. Si dos tickets se repiten (no deberia pasar -- MT5 no
-    reusa tickets), la lectura (load_all) se queda con la ULTIMA linea de ese
-    ticket."""
+           signal_quality: dict | None = None, signal_quality_diagnostics: dict | None = None) -> None:
+    """Agrega una linea {ticket, score:{...}, signal_quality:{...},
+    signal_quality_diagnostics:{...}} (cada clave solo si se paso) al archivo
+    del symbol+magic. `entry_score` puede ser None (ej. si solo se pudo
+    calcular Signal Quality) -- en ese caso la linea no lleva `score`.
+
+    `signal_quality_diagnostics` (BOT-051.5, seccion 10): telemetria de POR
+    QUE cada factor quedo UNAVAILABLE (`warmup`/`alignment_history`/
+    `structure_replay_mismatch`/`market_history_fetch_error`/
+    `unexpected_exception`/`other`) -- deliberadamente SEPARADA de
+    `signal_quality` (nunca dentro de `SignalQualityVectorV1`, que es
+    inmutable y congelado): esto es observabilidad tecnica sobre el PROCESO
+    de calculo, no una feature de calidad de la señal.
+
+    Si dos tickets se repiten (no deberia pasar -- MT5 no reusa tickets), la
+    lectura (load_all) se queda con la ULTIMA linea de ese ticket."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     path = _store_path(symbol, magic)
     row: dict = {"ticket": ticket}
@@ -58,6 +67,13 @@ def record(symbol: str, magic: int, ticket: int, entry_score: dict | None,
         row["score"] = entry_score
     if signal_quality is not None:
         row["signal_quality"] = signal_quality
+        # BOT-051.5 -- provenance SOLO cuando hay signal_quality que fechar
+        # (no tiene sentido para una fila que es puro `score`, comportamiento
+        # de antes de BOT-051.4). Fail-safe (provenance.snapshot() nunca
+        # lanza) -- ver execution/src/provenance.py.
+        row["provenance"] = provenance.snapshot()
+    if signal_quality_diagnostics is not None:
+        row["signal_quality_diagnostics"] = signal_quality_diagnostics
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
@@ -85,6 +101,57 @@ def load_all(symbol: str, magic: int) -> dict[int, dict]:
                 row = json.loads(line)
                 ticket = int(row["ticket"])
                 out[ticket] = {**row.get("score", {}), "signal_quality": row.get("signal_quality")}
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                continue
+    return out
+
+
+def load_all_raw(symbol: str, magic: int) -> dict[int, dict]:
+    """BOT-051.5 -- ticket -> fila COMPLETA tal cual se persistio (`ticket`,
+    `score`, `signal_quality`, `signal_quality_diagnostics`, cada una
+    presente solo si se guardo). Usado por el generador de dataset OOS y por
+    la matriz de coverage (scripts/build_signal_quality_oos_dataset.py) --
+    necesitan las tres piezas juntas sin la mezcla de `load_all()` (pensada
+    para el panel) ni el filtro exclusivo de `load_all_signal_quality()`."""
+    path = _store_path(symbol, magic)
+    if not path.exists():
+        return {}
+    out: dict[int, dict] = {}
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+                out[int(row["ticket"])] = row
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                continue
+    return out
+
+
+def load_all_signal_quality(symbol: str, magic: int) -> dict[int, dict]:
+    """BOT-051.5 -- ticket -> signal_quality dict RAW (tal cual se persistio,
+    sin mezclar con los campos de `score`), solo para tickets que SI tienen
+    la clave. Usado por el bridge de reconciliacion OOS
+    (execution/src/signal_quality_reconciliation.py) para enumerar que
+    snapshots existen sin ambiguedad de nombres de campo -- `load_all()`
+    sigue siendo la fuente para el panel (necesita `score` al nivel
+    superior, ver docstring de esa funcion)."""
+    path = _store_path(symbol, magic)
+    if not path.exists():
+        return {}
+    out: dict[int, dict] = {}
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+                if "signal_quality" not in row or row["signal_quality"] is None:
+                    continue
+                out[int(row["ticket"])] = row["signal_quality"]
             except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                 continue
     return out

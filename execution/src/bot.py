@@ -56,7 +56,8 @@ from strategy import signal_quality as sq
 
 from .mt5_utils import select_symbol, resolve_symbol, measure_broker_offset_seconds, resolve_filling_mode, mt5_lock
 from .mt5_validation import check_mt5_readiness, MT5NotReadyError
-from . import score_store
+from . import score_store, outcome_store
+from . import signal_quality_reconciliation as sq_bridge
 from . import kill_switch, kill_switch_store, operating_day
 
 TIMEFRAME_BY_PROFILE = {"1m": mt5.TIMEFRAME_M1, "5m": mt5.TIMEFRAME_M5}
@@ -83,6 +84,15 @@ AGE_LOOKBACK_DAYS_FOR_ACIERTOS = 365
 # _place_order() si falla o si la historia disponible resulta insuficiente
 # (ver _compute_signal_quality()).
 SIGNAL_QUALITY_LOOKBACK_DAYS = 15
+
+# BOT-051.5 -- cada cuantos ciclos de run() se corre el puente de
+# reconciliacion OOS (execution/src/signal_quality_reconciliation.py).
+# Deliberadamente NO cada ciclo (ver poll_interval_s, 10s tipico): el puente
+# es 100% read-only respecto a MT5 y ya es idempotente (un ticket en estado
+# final no se vuelve a consultar), pero igual no hace falta consultar el
+# historial de ordenes/deals cada 10s -- cada ~5 minutos alcanza de sobra
+# para que la acumulacion OOS quede al dia sin sumar carga innecesaria a MT5.
+SIGNAL_QUALITY_OOS_BRIDGE_EVERY_N_CYCLES = 30
 
 
 def _corrected_utc_seconds(raw_time_s: int, offset_seconds: float) -> int:
@@ -162,6 +172,13 @@ class LiveExecutionBot:
         # `observed_at_time_utc`). No participa de ninguna decision de
         # señal/ejecucion.
         self._closed_bar_count: int = 0
+        # BOT-051.5 -- contador de ciclos de run() para el throttle del
+        # puente de reconciliacion OOS (SIGNAL_QUALITY_OOS_BRIDGE_EVERY_N_CYCLES).
+        # Se reinicia en cada arranque del proceso -- no hace falta que
+        # persista: el peor caso de un reinicio es correr la reconciliacion
+        # una vez de mas pronto, nunca un problema de correctitud (el puente
+        # es idempotente).
+        self._run_cycle_count: int = 0
         self._filling_mode: int | None = None
         self._offset_seconds: float = 0.0
         self._contract_size: float | None = None
@@ -621,20 +638,27 @@ class LiveExecutionBot:
         funcion no los recibe con permiso de modificarlos -- ver
         process_closed_bar()). Misma disciplina defensiva que `_score_entry()`:
         cualquier falla (MT5, historial insuficiente) se loguea y devuelve
-        None -- la orden se coloca igual, nunca al reves.
+        (None, diagnostics) -- la orden se coloca igual, nunca al reves.
 
         Pide mas historial que `_score_entry()` (`SIGNAL_QUALITY_LOOKBACK_DAYS`,
         no `SCORE_LOOKBACK_BARS`) porque Alignment necesita varios bloques D1
         (1440min) ya cerrados. `entry` es el valor YA calculado por el motor de
         señal real -- nunca se recalcula aca (Structure lo usa tal cual para
-        `origin_dist_atr`)."""
+        `origin_dist_atr`).
+
+        Devuelve (vector | None, diagnostics: dict) -- BOT-051.5 seccion 10:
+        `diagnostics` siempre lleva una razon categorizada
+        (`market_history_fetch_error`/`unexpected_exception`/lo que devuelva
+        `compute_signal_quality_at_bar()`, ver ese modulo) para telemetria de
+        disponibilidad, separada del propio vector -- nunca se mezcla con
+        `SignalQualityVectorV1`, que sigue inmutable."""
         try:
             dt_to = datetime.fromtimestamp(raw_bar_time, tz=timezone.utc)
             dt_from = dt_to - timedelta(days=SIGNAL_QUALITY_LOOKBACK_DAYS)
             rates = mt5.copy_rates_range(self.symbol, self.timeframe, dt_from, dt_to)
             if rates is None or len(rates) < 20:
                 self._log("AVISO: historial insuficiente para Signal Quality -- se coloca sin snapshot.")
-                return None
+                return None, {"fatal_reason": "market_history_fetch_error"}
 
             time_utc = rates["time"].astype("int64") - round(self._offset_seconds)
             high = rates["high"].astype(float)
@@ -650,10 +674,37 @@ class LiveExecutionBot:
             if not diag["structure_replay_matches_signal"]:
                 self._log("AVISO: la ventana de historial de Signal Quality no reprodujo la señal real -- "
                           "Structure/origin_dist_atr quedan UNAVAILABLE en este snapshot (ver diagnostics).")
-            return vector
+            return vector, diag
         except Exception as e:
             self._log(f"AVISO: no se pudo calcular Signal Quality ({e!r}) -- se coloca sin snapshot.")
-            return None
+            return None, {"fatal_reason": "unexpected_exception", "error": repr(e)}
+
+    def _run_signal_quality_oos_bridge(self) -> None:
+        """BOT-051.5 -- reconcilia el resultado real (OutcomeObservation) de
+        cada ticket con snapshot de Signal Quality ya persistido, vía
+        `execution/src/signal_quality_reconciliation.py`. 100% read-only
+        respecto a MT5 -- nunca coloca, cancela ni modifica ninguna orden o
+        posicion; nunca toca el snapshot de Signal Quality ya persistido
+        (`score_store`, inmutable). Idempotente (ver ese modulo) y
+        throttled (`SIGNAL_QUALITY_OOS_BRIDGE_EVERY_N_CYCLES`) para no
+        consultar el historial de MT5 en cada ciclo.
+
+        Cualquier falla aca se loguea y NO se propaga -- el bot sigue
+        operando igual (ver execution/src/test_signal_quality_oos_bridge.py,
+        prueba de failure isolation)."""
+        try:
+            sq_tickets = list(score_store.load_all_signal_quality(self.symbol, self.magic).keys())
+            if not sq_tickets:
+                return
+            summary = sq_bridge.reconcile_signal_quality_outcomes(
+                mt5, self.symbol, self.magic, self.params.fixed_lot, sq_tickets, outcome_store, log=self._log,
+            )
+            if summary["reconciled"]:
+                self._log(f"Signal Quality OOS bridge: {summary['reconciled']} outcome(s) actualizado(s) "
+                          f"({summary['skipped_already_final']} ya en estado final, {summary['errors']} errores).")
+        except Exception as e:
+            self._log(f"AVISO: el puente de reconciliacion OOS de Signal Quality fallo ({e!r}) -- "
+                      "no afecta la operacion del bot, se reintenta en el proximo ciclo.")
 
     def _place_order(self, direction: int, entry: float, stop: float, target: float) -> int | None:
         """Devuelve el ticket de la orden colocada (None si fue dry_run o si
@@ -757,16 +808,17 @@ class LiveExecutionBot:
                     # fallar por un bug futuro -- ver
                     # execution/src/test_signal_quality_behavior_invariance.py.
                     try:
-                        signal_quality = self._compute_signal_quality(signal.dir, signal.entry, raw_time)
+                        signal_quality, sq_diagnostics = self._compute_signal_quality(signal.dir, signal.entry, raw_time)
                     except Exception as e:
                         self._log(f"AVISO: Signal Quality fallo de forma inesperada ({e!r}) -- se coloca sin snapshot.")
-                        signal_quality = None
+                        signal_quality, sq_diagnostics = None, {"fatal_reason": "unexpected_exception", "error": repr(e)}
                     ticket = self._place_order(signal.dir, signal.entry, signal.stop, signal.target)
                     if ticket is not None and (entry_score is not None or signal_quality is not None):
                         score_store.record(
                             self.symbol, self.magic, ticket,
                             entry_score.to_dict() if entry_score is not None else None,
                             signal_quality=signal_quality.to_dict() if signal_quality is not None else None,
+                            signal_quality_diagnostics=sq_diagnostics,
                         )
 
         self._last_processed_time = int(r["time"])
@@ -798,6 +850,9 @@ class LiveExecutionBot:
                     self._watch_pending_live()  # tick en vivo, cada ciclo -- ver docstring
                     self._reconcile()  # auditoria: cualquier orden/posicion propia que
                                         # desaparecio sin que un watcher de arriba la reportara
+                    self._run_cycle_count += 1
+                    if self._run_cycle_count % SIGNAL_QUALITY_OOS_BRIDGE_EVERY_N_CYCLES == 0:
+                        self._run_signal_quality_oos_bridge()  # BOT-051.5 -- read-only, throttled, nunca bloquea trading
                 if n:
                     self._log(f"Procesadas {n} vela(s) nueva(s).")
                 bi = 0

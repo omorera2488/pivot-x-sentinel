@@ -231,6 +231,16 @@ summary { cursor: pointer; color: var(--muted); }
 .sq-unavailable { color: var(--muted); font-style: italic; }
 .sq-direction { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--card-border); }
 
+/* Signal Quality -- tarjeta de acumulacion OOS (BOT-051.5). Reusa
+   .sample-grid/.sample-item (mismo look que "Muestra y riesgo") -- sin
+   colores de calidad, sin recomendaciones, sin gate: solo conteos y
+   estados de readiness (NO_DATA/ACCUMULATING/READY_FOR_OOS_ANALYSIS). */
+.sq-oos-readiness { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 12px; }
+.sq-oos-readiness-item { text-align: center; padding: 8px; border: 1px solid var(--card-border); border-radius: 8px; }
+.sq-oos-readiness-item span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 4px; text-transform: uppercase; }
+.sq-oos-readiness-item b { font-size: 13px; }
+.sq-oos-note { margin-top: 10px; color: var(--muted); font-size: 12px; }
+
 @media (max-width: 850px) {
   .grid, .config-grid, .totals { grid-template-columns: 1fr 1fr; }
   .toolbar { flex-wrap: wrap; }
