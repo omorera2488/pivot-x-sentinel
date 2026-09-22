@@ -154,10 +154,33 @@ function renderAccount(acc) {
     `Conexión con MT5 verificada · cuenta ${acc.trade_mode === 0 ? "demo" : "real"} autorizada para operar.`;
 }
 
-function renderPositionsOrders(positions, orders) {
-  const lines = [`<p>Posiciones: ${positions.length} · Pendientes: ${orders.length}</p>`]
-    .concat(positions.map((p) => `<p>Posición #${p.ticket} · <b class="${p.profit >= 0 ? "ok" : "bad"}">${fmtUSD(p.profit)}</b></p>`));
-  document.getElementById("posPend").innerHTML = lines.join("");
+// BOT-051.6 -- requisito funcional principal (sección 5): Signal Quality
+// visible desde que NACE la LIMIT, no solo al cerrar el trade. Antes esta
+// tarjeta solo mostraba un conteo agregado ("Posiciones: N · Pendientes: M")
+// sin ningún dato de Signal Quality -- el único lugar donde aparecía era la
+// tabla de "Últimas 20 operaciones" (cerradas). Ahora cada posición abierta
+// y cada LIMIT pendiente se lista con su propio ícono (scoreBadge(), mismo
+// componente reusado tal cual de la tabla de cerradas -- BOT-051.6 sección 7:
+// "evolucionar el ícono existente en vez de crear una superficie redundante").
+// `scores` viene de GET /scores, indexado por el mismo `ticket` que trae
+// /positions y /orders (ver docstring de scoreBadge() en panel/app.js).
+function renderPositionsOrders(positions, orders, scores) {
+  const posRows = positions.map((p) => `
+    <div class="pp-row">
+      <span>Posición #${p.ticket} <span class="muted">· abierta</span></span>
+      <span class="pp-row-right">
+        <b class="${p.profit >= 0 ? "ok" : "bad"}">${fmtUSD(p.profit)}</b>
+        ${scoreBadge(scores, p.ticket)}
+      </span>
+    </div>`);
+  const orderRows = orders.map((o) => `
+    <div class="pp-row">
+      <span>LIMIT #${o.ticket} <span class="muted">· pendiente</span></span>
+      <span class="pp-row-right">${scoreBadge(scores, o.ticket)}</span>
+    </div>`);
+  document.getElementById("posPend").innerHTML =
+    `<p class="pp-summary">Posiciones: ${positions.length} · Pendientes: ${orders.length}</p>` +
+    posRows.join("") + orderRows.join("");
   const floating = positions.reduce((s, p) => s + (p.profit || 0), 0);
   document.getElementById("floating").textContent = fmtUSD(floating);
   document.getElementById("floating").className = "value " + (floating > 0 ? "ok" : floating < 0 ? "bad" : "");
@@ -229,22 +252,24 @@ async function refresh() {
     renderKillSwitch(s);
     clearError("err");
 
-    const [acc, positions, orders, events] = await Promise.all([
+    const scoresQS = s.symbol ? `?symbol=${s.symbol}&magic=${s.magic}` : "";
+    const [acc, positions, orders, events, scores] = await Promise.all([
       apiGet("/account"),
       apiGet("/positions" + (s.symbol ? `?symbol=${s.symbol}&magic=${s.magic}` : "")),
       apiGet("/orders" + (s.symbol ? `?symbol=${s.symbol}&magic=${s.magic}` : "")),
       apiGet("/events?limit=50"),
+      apiGet("/scores" + scoresQS),
     ]);
     renderAccount(acc);
-    renderPositionsOrders(positions, orders);
+    // BOT-051.6 -- Signal Quality visible desde que nace la LIMIT: `scores`
+    // ya trae el snapshot t0 de CUALQUIER ticket que el bot haya colocado,
+    // este todavía pendiente, abierto o ya cerrado (ver score_store.record(),
+    // llamado inmediatamente después de _place_order() en execution/src/bot.py).
+    renderPositionsOrders(positions, orders, scores);
     renderEvents(events);
 
     const historyQS = s.symbol ? `?symbol=${s.symbol}&magic=${s.magic}&days=365` : "?days=365";
-    const scoresQS = s.symbol ? `?symbol=${s.symbol}&magic=${s.magic}` : "";
-    const [history, scores] = await Promise.all([
-      apiGet("/history" + historyQS),
-      apiGet("/scores" + scoresQS),
-    ]);
+    const history = await apiGet("/history" + historyQS);
     const trades = closedTrades(history);
     renderTradeStats(trades);
     renderEquityCurve(trades);

@@ -186,11 +186,19 @@ summary { cursor: pointer; color: var(--muted); }
 .score-pop {
   display: none;
   position: absolute;
-  right: 0;
+  /* BOT-051.6: centrado sobre el ícono (en vez de right:0) -- antes de esta
+     tarea el ícono SIEMPRE vivía en la última columna de una tabla ancha
+     (pegado al borde derecho), donde right:0 alcanzaba. Ahora el mismo
+     componente también se usa en "Posiciones y pendientes" (tarjeta angosta,
+     el ícono puede caer cerca del borde IZQUIERDO), donde right:0 empujaba
+     el popover fuera de la pantalla. Centrado + clamp de ancho evita el
+     overflow en ambos contextos sin necesitar JS. */
+  left: 50%;
+  transform: translateX(-50%);
   bottom: 100%;
   margin-bottom: 8px;
   width: 260px;
-  max-width: 80vw;
+  max-width: min(260px, 92vw);
   background: var(--card);
   border: 1px solid var(--card-border);
   border-radius: 11px;
@@ -230,6 +238,25 @@ summary { cursor: pointer; color: var(--muted); }
 .sq-row b { font-weight: 600; font-size: 12px; }
 .sq-unavailable { color: var(--muted); font-style: italic; }
 .sq-direction { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--card-border); }
+/* BOT-051.6 sección 6: razón de indisponibilidad de un factor -- mismo look
+   neutral que .sq-unavailable (no es un error, no es "malo"), en su propia
+   línea debajo de la fila para no competir con el valor. */
+.sq-row-unavailable { flex-direction: column; align-items: flex-start; }
+.sq-reason { color: var(--muted); font-size: 11px; font-style: italic; }
+
+/* BOT-051.6: filas individuales de "Posiciones y pendientes" -- cada LIMIT
+   pendiente / posición abierta con su propio ícono de Signal Quality (mismo
+   componente que la tabla de cerradas, ver scoreBadge() en panel/app.js).
+   Compacto a propósito -- no convierte la tarjeta en una tabla. */
+.pp-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.pp-row-right { display: flex; align-items: center; gap: 8px; }
+.pp-summary { margin-bottom: 6px; }
 
 /* Signal Quality -- tarjeta de acumulacion OOS (BOT-051.5). Reusa
    .sample-grid/.sample-item (mismo look que "Muestra y riesgo") -- sin

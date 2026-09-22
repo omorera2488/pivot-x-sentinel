@@ -315,7 +315,13 @@ def scores(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC):
     -- puramente informativo, nunca participa en la decision de operar.
     `None` en registros previos a BOT-051.4 o donde el calculo no pudo
     completarse (ver docstring de _compute_signal_quality en
-    execution/src/bot.py)."""
+    execution/src/bot.py).
+
+    `signal_quality_diagnostics` (BOT-051.5/BOT-051.6): razon categorizada de
+    por que cada factor del vector quedo `UNAVAILABLE` (`warmup`/
+    `alignment_history`/`structure_replay_mismatch`/`other`), SEPARADA del
+    vector en si -- el panel la usa solo para mostrar el motivo junto a cada
+    factor, nunca para alterar `signal_quality`. `None` cuando no aplica."""
     sym = _resolve_query_symbol(symbol)
     return score_store.load_all(sym, magic)
 

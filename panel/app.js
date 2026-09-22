@@ -129,15 +129,20 @@ function fmtSigned(n) {
   return n > 0 ? `+${n}` : `${n}`;
 }
 
-// Calificación de entrada (Divergencia/Tendencia/CVP -- ver strategy/scoring.py):
-// un ícono con un popover CSS que arma el desglose y el motivo de cada factor.
-// scoresMap viene de GET /scores ({ticket: {...score, signal_quality}}); el
-// ticket con el que el bot coloca la orden es el mismo position_id que trae
-// cada deal de /history (ver execution/src/score_store.py) -- sin dato para
-// esa fila, no muestra nada (operaciones previas a esta función, o que el
-// bot nunca llegó a calificar).
-function scoreBadge(scoresMap, positionId) {
-  const s = scoresMap && scoresMap[positionId];
+// Calificación de entrada (Divergencia/Tendencia/CVP -- ver strategy/scoring.py)
+// + Signal Quality (BOT-051.4): un ícono con un popover CSS que arma el
+// desglose, el motivo de cada factor, y el vector de Signal Quality -- todo
+// capturado en el MISMO momento causal (t0, al colocar la orden). scoresMap
+// viene de GET /scores ({ticket: {...score, signal_quality,
+// signal_quality_diagnostics}}); el `ticket` con el que el bot coloca la
+// orden es el mismo `position_id` que trae cada deal de /history y el mismo
+// `ticket` que devuelven /positions y /orders (ver execution/src/score_store.py
+// y reports/BOT-051.5-* sección de identidad/linkage) -- por eso este mismo
+// componente se reusa tal cual para una LIMIT pendiente (BOT-051.6, sección
+// 5: visible desde que nace, no solo al cerrar), una posición abierta, o una
+// fila del historial de cerradas. Sin dato para ese ticket, no muestra nada.
+function scoreBadge(scoresMap, ticket) {
+  const s = scoresMap && scoresMap[ticket];
   if (!s) return "";
   const cls = (v) => (v > 0 ? "ok" : v < 0 ? "bad" : "muted");
   // score/reason pueden faltar en registros de antes de agregar un factor
@@ -161,7 +166,7 @@ function scoreBadge(scoresMap, positionId) {
         ${row("CVP", s.cvp_score, s.cvp_reason)}
         ${row("Nodo", s.nodo_score, s.nodo_reason)}
         ${hasTotal ? `<div class="score-total">Total <b class="${cls(s.total)}">${fmtSigned(s.total)}</b> · el volumen no cambia (fixed_lot)</div>` : ""}
-        ${signalQualitySection(s.signal_quality)}
+        ${signalQualitySection(s.signal_quality, s.signal_quality_diagnostics)}
       </div>
     </span>`;
 }
@@ -172,29 +177,48 @@ function scoreBadge(scoresMap, positionId) {
 // reports/BOT-051.2-signal-quality-definition-freeze.md sección 11. Registros
 // sin `signal_quality` (previos a BOT-051.4, o donde el cálculo falló) no
 // muestran esta sección -- nunca "undefined", nunca un valor inventado.
-function signalQualityFactor(label, unit, fo) {
+// `reasonKey` indexa diagnostics.unavailable_reasons (BOT-051.5 seccion 10,
+// ver strategy/signal_quality.py) -- solo presente para factores realmente
+// UNAVAILABLE; registros de antes de BOT-051.5 no tienen diagnostics y el
+// factor se sigue mostrando igual que antes (UNAVAILABLE sin razon).
+function signalQualityFactor(label, unit, fo, reasonKey, diagnostics) {
   if (!fo) return "";
   if (fo.status !== "AVAILABLE") {
-    return `<div class="sq-row"><span>${label}</span><b class="sq-unavailable">UNAVAILABLE</b></div>`;
+    const reason = diagnostics && diagnostics.unavailable_reasons
+      ? diagnostics.unavailable_reasons[reasonKey] : undefined;
+    return `<div class="sq-row sq-row-unavailable">
+      <span>${label}</span><b class="sq-unavailable">UNAVAILABLE</b>
+      ${reason ? `<div class="sq-reason">Reason: ${escapeHtml(reason)}</div>` : ""}
+    </div>`;
   }
   // Momentum/Structure son continuos (float) -- 2 decimales solo de
   // presentación, el valor crudo sigue siendo el que persiste score_store.
-  // Alignment/Context son texto (enum) -- se muestran tal cual, escapados.
+  // Alignment/Context son texto (enum, NUNCA colapsado a UNAVAILABLE --
+  // NEUTRAL es un VALOR de Alignment con status=AVAILABLE, no un status
+  // propio, ver strategy/signal_quality.py) -- se muestran tal cual, escapados.
   const shown = typeof fo.value === "number"
     ? `${fo.value >= 0 ? "+" : ""}${fo.value.toFixed(2)}${unit ? " " + unit : ""}`
     : escapeHtml(String(fo.value));
   return `<div class="sq-row"><span>${label}</span><b>${shown}</b></div>`;
 }
 
-function signalQualitySection(sq) {
+// BOT-051.6 sección 9 (crítica): título explícito "AL CREAR LA LIMIT (t0)" --
+// esta sección es SIEMPRE el snapshot inmutable de t0
+// (strategy.signal_quality.SignalQualityVectorV1, congelado al nacer la
+// LIMIT), nunca el resultado del trade. Donde exista un resultado ex post
+// (precio/volumen/P&L neto/hora de cierre -- BOT-051.4 ya los muestra en la
+// FILA de la tabla, ver renderTradesTable()), queda visual y
+// estructuralmente separado de esta caja -- nunca mezclado adentro (ver
+// reports/BOT-051.5-* y el enunciado de BOT-051.6 sección 9).
+function signalQualitySection(sq, diagnostics) {
   if (!sq) return "";
   return `
     <div class="sq-section">
-      <div class="sq-title">Signal Quality</div>
-      ${signalQualityFactor("Momentum", "ATR / 3 velas", sq.momentum)}
-      ${signalQualityFactor("Alignment", "", sq.alignment)}
-      ${signalQualityFactor("Structure", "ATR", sq.structure)}
-      ${signalQualityFactor("Context", "", sq.context)}
+      <div class="sq-title">Signal Quality — al crear la LIMIT (t0)</div>
+      ${signalQualityFactor("Momentum", "ATR / 3 velas", sq.momentum, "momentum", diagnostics)}
+      ${signalQualityFactor("Alignment", "", sq.alignment, "alignment", diagnostics)}
+      ${signalQualityFactor("Structure", "ATR", sq.structure, "structure", diagnostics)}
+      ${signalQualityFactor("Context", "", sq.context, "context", diagnostics)}
       <div class="sq-row sq-direction"><span>Direction</span><b>${escapeHtml(sq.direction || "--")}</b></div>
     </div>`;
 }

@@ -79,15 +79,21 @@ def record(symbol: str, magic: int, ticket: int, entry_score: dict | None,
 
 
 def load_all(symbol: str, magic: int) -> dict[int, dict]:
-    """ticket -> {**score_fields, "signal_quality": {...} | None}. Los campos
-    de `score` (tal cual EntryScore.to_dict()) siguen quedando al nivel
-    superior -- comportamiento IDENTICO al de antes de BOT-051.4 para
-    cualquier lector existente de esos campos (ej. panel/app.js::scoreBadge()).
-    `signal_quality` es una clave nueva, siempre presente (None para
-    registros que no lo tienen -- viejos, o nuevos donde solo se pudo
-    calificar la entrada). Lineas corruptas o incompletas (ej. un crash a
-    mitad de escritura) se ignoran en vez de romper toda la lectura -- es un
-    registro de conveniencia para el panel, no una fuente critica."""
+    """ticket -> {**score_fields, "signal_quality": {...} | None,
+    "signal_quality_diagnostics": {...} | None}. Los campos de `score` (tal
+    cual EntryScore.to_dict()) siguen quedando al nivel superior --
+    comportamiento IDENTICO al de antes de BOT-051.4 para cualquier lector
+    existente de esos campos (ej. panel/app.js::scoreBadge()). `signal_quality`
+    es una clave nueva, siempre presente (None para registros que no lo
+    tienen -- viejos, o nuevos donde solo se pudo calificar la entrada).
+    `signal_quality_diagnostics` (BOT-051.6): mismo trato -- siempre presente,
+    None si el registro no la tiene (viejos, o `signal_quality` completo sin
+    ningun factor UNAVAILABLE que justifique una razon) -- el panel la usa
+    para mostrar "Reason: <razon real>" junto a cada factor UNAVAILABLE (ver
+    signalQualityFactor() en panel/app.js), nunca para alterar el vector
+    congelado en si. Lineas corruptas o incompletas (ej. un crash a mitad de
+    escritura) se ignoran en vez de romper toda la lectura -- es un registro
+    de conveniencia para el panel, no una fuente critica."""
     path = _store_path(symbol, magic)
     if not path.exists():
         return {}
@@ -100,7 +106,11 @@ def load_all(symbol: str, magic: int) -> dict[int, dict]:
             try:
                 row = json.loads(line)
                 ticket = int(row["ticket"])
-                out[ticket] = {**row.get("score", {}), "signal_quality": row.get("signal_quality")}
+                out[ticket] = {
+                    **row.get("score", {}),
+                    "signal_quality": row.get("signal_quality"),
+                    "signal_quality_diagnostics": row.get("signal_quality_diagnostics"),
+                }
             except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                 continue
     return out

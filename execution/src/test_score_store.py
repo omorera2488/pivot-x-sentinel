@@ -84,6 +84,20 @@ def main() -> int:
         out6 = score_store.load_all("XAUUSDc", 900001)
         check("lectura sigue funcionando pese a la linea corrupta", len(out6) == 4)
 
+        print("\n=== G. signal_quality_diagnostics (BOT-051.6) -- razon de UNAVAILABLE llega al panel ===")
+        diag = {
+            "structure_replay_matches_signal": False, "origin_bar": None, "n_bars_used": 20,
+            "unavailable_reasons": {"structure": "structure_replay_mismatch"},
+        }
+        score_store.record("XAUUSDc", 900001, 555, {"total": 0}, signal_quality=sq_dict, signal_quality_diagnostics=diag)
+        out7 = score_store.load_all("XAUUSDc", 900001)
+        check("ticket 555 trae signal_quality_diagnostics completo",
+              out7[555]["signal_quality_diagnostics"] == diag)
+        check("ticket 333 (sin diagnostics, seccion C) sigue en None -- backward compatible",
+              out7[333]["signal_quality_diagnostics"] is None)
+        check("linea legacy sin la clave (ticket 222) tambien queda en None, no rompe la lectura",
+              out7[222]["signal_quality_diagnostics"] is None)
+
     print(f"\n{len(FAILURES)} failing checks" if FAILURES else "\nALL CHECKS PASS")
     if FAILURES:
         for f in FAILURES:
