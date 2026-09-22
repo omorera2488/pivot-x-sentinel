@@ -124,48 +124,34 @@ function escapeHtml(str) {
   }[c]));
 }
 
-function fmtSigned(n) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "--";
-  return n > 0 ? `+${n}` : `${n}`;
-}
-
-// Calificación de entrada (Divergencia/Tendencia/CVP -- ver strategy/scoring.py)
-// + Signal Quality (BOT-051.4): un ícono con un popover CSS que arma el
-// desglose, el motivo de cada factor, y el vector de Signal Quality -- todo
-// capturado en el MISMO momento causal (t0, al colocar la orden). scoresMap
-// viene de GET /scores ({ticket: {...score, signal_quality,
-// signal_quality_diagnostics}}); el `ticket` con el que el bot coloca la
+// BOT-051.6.1 -- cleanup de presentación: el popover productivo mostraba
+// arriba la calificación legacy (Divergencia/Tendencia/CVP/Nodo/Total, ver
+// strategy/scoring.py) y debajo Signal Quality v1 -- dos modelos
+// conceptuales en la misma superficie, con un "Total" (-1/0/+1) que ya no
+// representa el contrato vigente. Esto NO borra el dato: `score` se sigue
+// calculando y persistiendo igual que antes en execution/src/score_store.py
+// (`/scores` lo sigue devolviendo, intacto) -- este cambio es puramente de
+// PRESENTACIÓN, saca la calificación legacy de la superficie productiva
+// principal sin tocar el modelo de datos ni el histórico ya persistido (ver
+// reports/BOT-051.6.1-signal-quality-production-ui-cleanup.md sección 3).
+//
+// Ícono con un popover CSS que muestra EXCLUSIVAMENTE Signal Quality v1 (t0)
+// -- todo capturado en el mismo momento causal en que se coloca la orden.
+// scoresMap viene de GET /scores; el `ticket` con el que el bot coloca la
 // orden es el mismo `position_id` que trae cada deal de /history y el mismo
 // `ticket` que devuelven /positions y /orders (ver execution/src/score_store.py
 // y reports/BOT-051.5-* sección de identidad/linkage) -- por eso este mismo
-// componente se reusa tal cual para una LIMIT pendiente (BOT-051.6, sección
-// 5: visible desde que nace, no solo al cerrar), una posición abierta, o una
-// fila del historial de cerradas. Sin dato para ese ticket, no muestra nada.
+// componente se reusa tal cual para una LIMIT pendiente, una posición
+// abierta, o una fila del historial de cerradas. Sin `signal_quality` para
+// ese ticket (registros previos a BOT-051.4, o donde el cálculo no pudo
+// completarse) no muestra nada -- nunca un popover vacío.
 function scoreBadge(scoresMap, ticket) {
   const s = scoresMap && scoresMap[ticket];
-  if (!s) return "";
-  const cls = (v) => (v > 0 ? "ok" : v < 0 ? "bad" : "muted");
-  // score/reason pueden faltar en registros de antes de agregar un factor
-  // nuevo (ej. "Nodo" no existía en las primeras entradas calificadas) --
-  // se omite la fila en vez de mostrar "undefined".
-  const row = (label, score, reason) => {
-    if (score === undefined || reason === undefined) return "";
-    return `
-    <div class="score-row">
-      <b>${label}</b> <span class="${cls(score)}">${fmtSigned(score)}</span>
-      <div class="muted">${escapeHtml(reason)}</div>
-    </div>`;
-  };
-  const hasTotal = s.total !== undefined;
+  if (!s || !s.signal_quality) return "";
   return `
     <span class="score-badge">
-      <span class="score-icon ${hasTotal ? cls(s.total) : "muted"}" tabindex="0">ⓘ${hasTotal ? " " + fmtSigned(s.total) : ""}</span>
+      <span class="score-icon" tabindex="0">ⓘ</span>
       <div class="score-pop">
-        ${row("Divergencia", s.divergencia_score, s.divergencia_reason)}
-        ${row("Tendencia", s.tendencia_score, s.tendencia_reason)}
-        ${row("CVP", s.cvp_score, s.cvp_reason)}
-        ${row("Nodo", s.nodo_score, s.nodo_reason)}
-        ${hasTotal ? `<div class="score-total">Total <b class="${cls(s.total)}">${fmtSigned(s.total)}</b> · el volumen no cambia (fixed_lot)</div>` : ""}
         ${signalQualitySection(s.signal_quality, s.signal_quality_diagnostics)}
       </div>
     </span>`;

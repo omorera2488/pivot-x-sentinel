@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>pivot-x-sentinel</title>
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 <main>
@@ -81,7 +81,10 @@
     <div class="events-list" id="eventsList">Cargando…</div>
   </div>
 
-  <div class="card wide3">
+  <!-- BOT-051.6.1: full width (antes wide3, dejaba 1/4 del ancho vacio a la
+       derecha en desktop) -- ver reports/BOT-051.6.1-signal-quality-production-ui-cleanup.md
+       sección 8. -->
+  <div class="card full">
     <div class="label">Signal Quality — Acumulación OOS</div>
     <div class="sq-oos" id="sqOosCard">Cargando…</div>
   </div>
@@ -90,7 +93,7 @@
     <div class="label">Últimas 20 operaciones</div>
     <table>
       <thead>
-        <tr><th>Hora local</th><th>Posición</th><th>Tipo</th><th>Volumen</th><th>Precio</th><th>Resultado neto</th><th>Calificación</th></tr>
+        <tr><th>Hora local</th><th>Posición</th><th>Tipo</th><th>Volumen</th><th>Precio</th><th>Resultado neto</th><th>Signal Quality</th></tr>
       </thead>
       <tbody id="tradesBody"><tr><td colspan="7" class="loading">Cargando…</td></tr></tbody>
     </table>
@@ -98,7 +101,7 @@
 </section>
 
 </main>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 <script>
 function renderStatus(s) {
   const running = s.running;

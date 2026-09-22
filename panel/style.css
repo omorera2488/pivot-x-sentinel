@@ -167,9 +167,13 @@ summary { cursor: pointer; color: var(--muted); }
 
 .loading { color: var(--muted); font-size: 13px; padding: 20px 0; }
 
-/* Calificación de entrada (Divergencia/Tendencia/CVP, ver strategy/scoring.py):
-   ícono + popover CSS puro, sin librerías -- panel/app.js arma el contenido
-   (scoreBadge()), acá solo el look. */
+/* BOT-051.6.1: ícono + popover CSS puro, sin librerías -- panel/app.js arma
+   el contenido (scoreBadge()), acá solo el look. Antes de esta tarea el
+   ícono tenía color/valor derivados de la calificación legacy (Divergencia/
+   Tendencia/CVP/Nodo/Total) -- removido junto con esa sección del popover:
+   el ícono queda neutral a propósito (Signal Quality v1 no tiene score ni
+   "bueno/malo" definido, ver reports/BOT-051.2-* sección 11), sin clases de
+   color ni valor numérico en el ícono mismo. */
 .score-badge { position: relative; display: inline-block; }
 .score-icon {
   cursor: default;
@@ -181,8 +185,6 @@ summary { cursor: pointer; color: var(--muted); }
   border: 1px solid var(--card-border);
   white-space: nowrap;
 }
-.score-icon.ok { border-color: var(--green); }
-.score-icon.bad { border-color: var(--red); }
 .score-pop {
   display: none;
   position: absolute;
@@ -211,26 +213,15 @@ summary { cursor: pointer; color: var(--muted); }
 }
 .score-badge:hover .score-pop,
 .score-badge:focus-within .score-pop { display: block; }
-.score-row { margin-bottom: 8px; }
-.score-row:last-of-type { margin-bottom: 0; }
-.score-row b { font-size: 12px; }
-.score-total {
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid var(--card-border);
-  color: var(--muted);
-}
 
-/* Signal Quality (BOT-051.4): vector crudo dentro del MISMO popover que la
-   calificación -- deliberadamente SIN clases .ok/.bad ni ningún otro color
-   que implique un ranking entre estados/factores (no hay score, no hay
-   pesos, no hay "bueno/malo" definido todavía -- ver
+/* Signal Quality (BOT-051.4): único contenido del popover desde BOT-051.6.1
+   (antes compartía espacio con la calificación legacy, de ahí el
+   margin-top/border-top que separaba ambas secciones -- ya no aplica, es
+   ahora la raíz del popover) -- deliberadamente SIN clases .ok/.bad ni
+   ningún otro color que implique un ranking entre estados/factores (no hay
+   score, no hay pesos, no hay "bueno/malo" definido todavía -- ver
    reports/BOT-051.2-signal-quality-definition-freeze.md sección 11). */
-.sq-section {
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid var(--card-border);
-}
+.sq-section { /* sin margin-top/border-top: ya no hay una sección previa de la que separarse */ }
 .sq-title { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 6px; }
 .sq-row { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
 .sq-row:last-child { margin-bottom: 0; }
@@ -272,6 +263,16 @@ summary { cursor: pointer; color: var(--muted); }
   .grid, .config-grid, .totals { grid-template-columns: 1fr 1fr; }
   .toolbar { flex-wrap: wrap; }
   .nav-group { width: 100%; margin-left: 0; }
+  /* BOT-051.6.1: sin esto, `.wide3` (span 3) pide una columna que ya no
+     existe en este breakpoint (grid pasa a 2 columnas arriba) y el
+     navegador crea una 3ra columna IMPLICITA solo para ese item -- `.full`
+     (grid-column: 1/-1) no la alcanza porque `-1` referencia la ULTIMA
+     columna EXPLICITA, no la implicita agregada por un vecino. Resultado
+     (bug preexistente, afectaba TODAS las tarjetas `.full`, no solo la
+     nueva de OOS): un hueco vacio a la derecha en vez de ancho completo.
+     Mismo criterio ya usado en el breakpoint de 520px de abajo (ahi
+     `.wide3` se clampea a span 1). */
+  .wide3 { grid-column: span 2; }
 }
 @media (max-width: 520px) {
   .grid, .config-grid, .totals, .calendar { grid-template-columns: 1fr; }
