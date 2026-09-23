@@ -23,11 +23,22 @@ aparte, no una reescritura del formato. Backward-compatible por construccion:
 una linea vieja simplemente no tiene la clave `signal_quality` (`load_all()`
 la completa con `None`); `record()` sigue aceptando `signal_quality=None`
 (default) para cualquier llamador que no lo pase, sin cambiar el
-comportamiento de `score` en absoluto."""
+comportamiento de `score` en absoluto.
+
+BOT-051.6.3 (ver reports/BOT-051.6.2-* y reports/BOT-051.6.3-*): `record()`
+normaliza tipos numpy escalares (`_json_safe()`, abajo) antes de serializar
+-- defensa en profundidad DESPUES de corregir la causa raiz real en el
+productor (`strategy/signal_quality.py`). Decision explicita: solo convierte
+`numpy.bool_`/`numpy.integer`/`numpy.floating` (los tipos razonablemente
+esperables desde `strategy/`), nunca objetos arbitrarios a texto -- una
+estructura genuinamente invalida sigue rompiendo `json.dumps()` en vez de
+persistirse silenciosamente mal."""
 from __future__ import annotations
 
 import json
 from pathlib import Path
+
+import numpy as np
 
 from . import provenance
 from .paths import user_data_root
@@ -41,6 +52,32 @@ DATA_DIR = user_data_root() / "execution" / "data" / "scores"
 def _store_path(symbol: str, magic: int) -> Path:
     safe_symbol = "".join(c if c.isalnum() else "_" for c in symbol)
     return DATA_DIR / f"{safe_symbol}_{magic}.jsonl"
+
+
+def _json_safe(value):
+    """BOT-051.6.3 -- defensa en profundidad, NO el fix principal (ese vive
+    en el productor, `strategy/signal_quality.py::_replay_armado_origin()` /
+    `compute_signal_quality_at_bar()`, ver BOT-051.6.2). Convierte SOLO los
+    tipos escalares de numpy razonablemente esperables desde `strategy/`
+    (`numpy.bool_`, `numpy.integer`, `numpy.floating`) a su equivalente
+    nativo de Python, recorriendo dicts/listas. Deliberadamente NO intenta
+    convertir nada mas: un tipo no reconocido (ej. un objeto arbitrario, un
+    `numpy.ndarray` completo) se devuelve TAL CUAL, para que `json.dumps()`
+    siga fallando fuerte y visible en vez de ocultar una estructura invalida
+    convirtiendola a texto. No reemplaza la disciplina de casteo en el
+    productor -- es una red de seguridad para un futuro campo que se agregue
+    sin ese cuidado, no una licencia para dejar de tenerlo."""
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, np.bool_):
+        return bool(value)
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, np.floating):
+        return float(value)
+    return value
 
 
 def record(symbol: str, magic: int, ticket: int, entry_score: dict | None,
@@ -75,7 +112,7 @@ def record(symbol: str, magic: int, ticket: int, entry_score: dict | None,
     if signal_quality_diagnostics is not None:
         row["signal_quality_diagnostics"] = signal_quality_diagnostics
     with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        f.write(json.dumps(_json_safe(row), ensure_ascii=False) + "\n")
 
 
 def load_all(symbol: str, magic: int) -> dict[int, dict]:

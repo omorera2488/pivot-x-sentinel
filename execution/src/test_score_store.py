@@ -19,6 +19,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root
 
 from execution.src import score_store
@@ -97,6 +99,44 @@ def main() -> int:
               out7[333]["signal_quality_diagnostics"] is None)
         check("linea legacy sin la clave (ticket 222) tambien queda en None, no rompe la lectura",
               out7[222]["signal_quality_diagnostics"] is None)
+
+        print("\n=== H. BOT-051.6.3 -- numpy.bool_ real en diagnostics: record()/load_all() end-to-end ===")
+        # Root cause de BOT-051.6.2: json.dumps() SIEMPRE falla sobre un
+        # numpy.bool_ (confirmado empiricamente con el numpy real del
+        # proyecto). Esta prueba NO mockea el punto que se esta probando --
+        # pasa un numpy.bool_ REAL (no un bool de Python que simule serlo) a
+        # traves de record() tal cual lo haria execution/src/bot.py si el fix
+        # de strategy/signal_quality.py fallara o si un campo futuro se
+        # olvidara de castear -- ejercitando la defensa en profundidad de
+        # score_store.py::_json_safe(), no el fix del productor.
+        diag_numpy = {
+            "structure_replay_matches_signal": np.bool_(True),
+            "origin_bar": np.int64(7), "n_bars_used": 30,
+            "unavailable_reasons": {},
+        }
+        check("precondicion: structure_replay_matches_signal es numpy.bool_ real (no simulado)",
+              type(diag_numpy["structure_replay_matches_signal"]) is np.bool_)
+        score_store.record("XAUUSDc", 900001, 666, {"total": 0}, signal_quality=sq_dict,
+                            signal_quality_diagnostics=diag_numpy)
+        out8 = score_store.load_all("XAUUSDc", 900001)
+        check("record() con numpy.bool_/numpy.int64 real NO lanza (defensa en profundidad activa)", 666 in out8)
+        persisted_diag = out8[666]["signal_quality_diagnostics"]
+        check("structure_replay_matches_signal persistido es bool NATIVO de Python tras leer del disco",
+              type(persisted_diag["structure_replay_matches_signal"]) is bool
+              and persisted_diag["structure_replay_matches_signal"] is True)
+        check("origin_bar persistido es int NATIVO de Python tras leer del disco",
+              type(persisted_diag["origin_bar"]) is int and persisted_diag["origin_bar"] == 7)
+        # Confirma que la linea escrita en disco es JSON valido de verdad, no
+        # solo que load_all() "arregla" algo en memoria -- lee el archivo raw.
+        raw_path = score_store._store_path("XAUUSDc", 900001)
+        with raw_path.open("r", encoding="utf-8") as f:
+            last_line = f.readlines()[-1]
+        try:
+            json.loads(last_line)
+            raw_json_ok = True
+        except json.JSONDecodeError:
+            raw_json_ok = False
+        check("la linea escrita en disco es JSON valido (no quedo a medio escribir)", raw_json_ok)
 
     print(f"\n{len(FAILURES)} failing checks" if FAILURES else "\nALL CHECKS PASS")
     if FAILURES:

@@ -11,6 +11,7 @@ derivacion de consenso de Alignment, replay de armado/origen, weekday
 locale-independiente, y causalidad de compute_signal_quality_at_bar()."""
 from __future__ import annotations
 
+import json
 import math
 import sys
 from datetime import datetime, timezone
@@ -121,6 +122,26 @@ def main() -> int:
     check("origen de la venta es bar 10, level 100.5 (el armado real, no la barra de señal)",
           replay_at_signal["venta"] == {"bar": 10, "level": 100.5}, f"got {replay_at_signal['venta']}")
 
+    # BOT-051.6.3 -- root cause de BOT-051.6.2: close[i]/ema_line[i] son
+    # numpy.float64 (arrays numpy REALES, no fixtures ya saneados), la
+    # comparacion devuelve numpy.bool_, y "armado_venta and down" puede
+    # devolver ese numpy.bool_ TAL CUAL -- exactamente el fixture de arriba
+    # (replay_at_signal, senal_venta_at_last_bar=True) es el escenario que
+    # faltaba cubrir (Structure replay CONFIRMA la señal, el caso normal que
+    # revento json.dumps() en produccion con las LIMITs reales 351931195/
+    # 352047367). Verificar tipo NATIVO, no solo el valor logico.
+    sv = replay_at_signal["senal_venta_at_last_bar"]
+    check("senal_venta_at_last_bar es bool NATIVO de Python (no numpy.bool_), tras el fix",
+          type(sv) is bool, f"type={type(sv)}")
+    try:
+        json.dumps(replay_at_signal)
+        json_ok = True
+    except TypeError as e:
+        json_ok = False
+        json_err = repr(e)
+    check("json.dumps(replay) no lanza TypeError (bug BOT-051.6.2 corregido)",
+          json_ok, "" if json_ok else json_err)
+
     print("\n=== E. _weekday_from_unix() -- locale-independiente ===")
     # 2026-09-21 00:00:00 UTC es lunes (verificado con datetime.weekday() puro,
     # sin depender de configuracion regional del sistema).
@@ -152,6 +173,43 @@ def main() -> int:
                                                        ema_periods=12, periodos_htf_min=800, observed_at_bar=b4)
     check("agregar barras FUTURAS despues de b no cambia el vector en b (sin lookahead)",
           vec_a.to_dict() == vec_b.to_dict(), f"a={vec_a.to_dict()}\nb={vec_b.to_dict()}")
+
+    print("\n=== H. BOT-051.6.3 -- diagnostics JSON-safe end-to-end (arrays NumPy reales, sin fixtures presaneados) ===")
+    # Recorre el mismo fixture aleatorio de la seccion F (seed fija=42, 100%
+    # determinista) buscando al menos una barra donde Structure replay
+    # CONFIRME la señal (structure_replay_matches_signal=True) -- el
+    # escenario que exactamente rompia json.dumps() en produccion (root
+    # cause de BOT-051.6.2). No se usa un valor ya sabido "limpio": se
+    # recorre compute_signal_quality_at_bar() de punta a punta, con datos
+    # numpy reales, igual que en produccion.
+    found_true = found_false = False
+    for bH in range(20, n4, 37):  # paso arbitrario, solo para variar la muestra sin recorrer las 5000 barras
+        for dirH in (1, -1):
+            entryH = float(engine.ema(c4[:bH + 1], 12)[-1])
+            _, diagH = sq.compute_signal_quality_at_bar(
+                t4, h4, l4, c4, b=bH, direction=dirH, entry=entryH,
+                ema_periods=12, periodos_htf_min=800, observed_at_bar=bH,
+            )
+            match = diagH["structure_replay_matches_signal"]
+            check(f"diagnostics(b={bH}, dir={dirH}): structure_replay_matches_signal es bool nativo",
+                  type(match) is bool, f"type={type(match)} value={match!r}")
+            try:
+                json.dumps(diagH)
+                json_okH = True
+            except TypeError as e:
+                json_okH = False
+                json_errH = repr(e)
+            check(f"diagnostics(b={bH}, dir={dirH}): json.dumps() no lanza",
+                  json_okH, "" if json_okH else json_errH)
+            if match:
+                found_true = True
+            else:
+                found_false = True
+        if found_true and found_false:
+            break
+    check("se encontro al menos un caso real con structure_replay_matches_signal=True "
+          "(el escenario que faltaba cubrir, no solo el caso False)", found_true)
+    check("se encontro al menos un caso real con structure_replay_matches_signal=False (contraste)", found_false)
 
     print("\n=== G. No-outcome-leakage (estructural) ===")
     import inspect

@@ -813,13 +813,29 @@ class LiveExecutionBot:
                         self._log(f"AVISO: Signal Quality fallo de forma inesperada ({e!r}) -- se coloca sin snapshot.")
                         signal_quality, sq_diagnostics = None, {"fatal_reason": "unexpected_exception", "error": repr(e)}
                     ticket = self._place_order(signal.dir, signal.entry, signal.stop, signal.target)
+                    # BOT-051.6.3 -- aislamiento explicito (root cause: BOT-051.6.2,
+                    # un numpy.bool_ sin castear en signal_quality.py hacia
+                    # json.dumps() reventaba esto y tumbaba TODO el ciclo -- ver
+                    # ese reporte). La orden YA se coloco arriba (con exito o no,
+                    # eso no cambia aca) -- lo que sigue es PURA observabilidad
+                    # (score/signal_quality), nunca debe poder interrumpir
+                    # self._last_processed_time de abajo ni forzar una
+                    # reconexion/reprocesamiento de esta misma barra. Si algo
+                    # similar vuelve a pasar (ej. otro campo no serializable a
+                    # futuro), se loguea y se sigue -- no se reintenta la orden,
+                    # no se toca ticket/sl/tp/volumen, no hay un segundo
+                    # order_send().
                     if ticket is not None and (entry_score is not None or signal_quality is not None):
-                        score_store.record(
-                            self.symbol, self.magic, ticket,
-                            entry_score.to_dict() if entry_score is not None else None,
-                            signal_quality=signal_quality.to_dict() if signal_quality is not None else None,
-                            signal_quality_diagnostics=sq_diagnostics,
-                        )
+                        try:
+                            score_store.record(
+                                self.symbol, self.magic, ticket,
+                                entry_score.to_dict() if entry_score is not None else None,
+                                signal_quality=signal_quality.to_dict() if signal_quality is not None else None,
+                                signal_quality_diagnostics=sq_diagnostics,
+                            )
+                        except Exception as e:
+                            self._log(f"ERROR: no se pudo persistir la calificacion/Signal Quality del ticket "
+                                      f"#{ticket} ({e!r}) -- la orden ya esta colocada, no se ve afectada.")
 
         self._last_processed_time = int(r["time"])
 

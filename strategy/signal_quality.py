@@ -294,8 +294,19 @@ def _replay_armado_origin(time_utc: np.ndarray, high: np.ndarray, low: np.ndarra
         if i == 0:
             down = up = False
         else:
-            down = close[i - 1] >= ema_line[i - 1] and close[i] < ema_line[i]
-            up = close[i - 1] <= ema_line[i - 1] and close[i] > ema_line[i]
+            # BOT-051.6.3 -- bool(...) explicito: close[i]/ema_line[i] son
+            # numpy.float64 (arrays numpy), la comparacion devuelve
+            # numpy.bool_, NO el bool nativo de Python. Sin este cast,
+            # "armado_venta and down" (mas abajo) puede devolver ese
+            # numpy.bool_ tal cual (Python "and"/"or" devuelven uno de los
+            # operandos, no un bool coercionado) -- ese tipo se filtraba
+            # hasta diagnostics["structure_replay_matches_signal"] y
+            # rompia json.dumps() en score_store.record() (BOT-051.6.2,
+            # root cause confirmado con evidencia real de produccion: dos
+            # LIMITs reales -- 351931195/352047367 -- perdieron su
+            # persistencia completa por este motivo).
+            down = bool(close[i - 1] >= ema_line[i - 1] and close[i] < ema_line[i])
+            up = bool(close[i - 1] <= ema_line[i - 1] and close[i] > ema_line[i])
         senal_venta = armado_venta and down
         senal_compra = armado_compra and up
         if senal_venta:
@@ -353,7 +364,12 @@ def compute_signal_quality_at_bar(
     resistencia, soporte = engine.bucket_levels(t, h, l, periodos_htf_min)
     atr = atr_wilder(h, l, c, period=ATR_PERIOD)
     atr_b = atr[-1]
-    atr_ok = not math.isnan(atr_b) and atr_b > 0
+    # BOT-051.6.3 -- bool(...) explicito por la misma razon que down/up mas
+    # abajo: atr_b es numpy.float64, "atr_b > 0" devuelve numpy.bool_, y
+    # Python "and" puede devolver ese operando tal cual sin coercionar.
+    # atr_ok hoy solo se usa en condiciones (nunca se serializa), pero se
+    # normaliza igual para que ningun uso futuro pueda heredar el mismo bug.
+    atr_ok = bool(not math.isnan(atr_b) and atr_b > 0)
 
     # --- Momentum: roc_atr_3 ---
     roc_atr_3 = None
@@ -364,7 +380,12 @@ def compute_signal_quality_at_bar(
     # --- Structure: origin_dist_atr ---
     replay = _replay_armado_origin(t, h, l, c, ema_line, resistencia, soporte)
     origin = replay["venta"] if direction < 0 else replay["compra"]
-    replay_matches = (
+    # BOT-051.6.3 -- bool(...) explicito en el punto de uso tambien (defensa
+    # en profundidad, ademas del cast ya aplicado en _replay_armado_origin()):
+    # esta es la variable que efectivamente viaja a
+    # diagnostics["structure_replay_matches_signal"] mas abajo, la que
+    # json.dumps() no podia serializar cuando quedaba como numpy.bool_.
+    replay_matches = bool(
         (direction < 0 and replay["senal_venta_at_last_bar"]) or
         (direction > 0 and replay["senal_compra_at_last_bar"])
     )

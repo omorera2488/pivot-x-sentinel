@@ -204,6 +204,39 @@ def _run_scenario(force_sq_failure: bool) -> tuple[list[dict], int | None]:
     return list(fake.order_send_calls), (fake._next_ticket - 1 if fake.order_send_calls else None)
 
 
+def _run_scenario_persistence_failure() -> tuple[list[dict], int | None, bool, int | None]:
+    """BOT-051.6.3 -- root cause: BOT-051.6.2 encontro que una excepcion
+    DENTRO de score_store.record() (ej. json.dumps() sobre un numpy.bool_ sin
+    castear) se propagaba hasta el loop principal de run(), forzando una
+    reconexion y dejando la barra sin marcar como procesada. Este escenario
+    fuerza esa MISMA excepcion (en el punto real, score_store.record(), no en
+    _compute_signal_quality() como A/B de arriba) y verifica que
+    process_closed_bar() la aisle: la orden ya se coloco, nada de eso puede
+    revertirse ni duplicarse, y self._last_processed_time SI avanza (evita el
+    riesgo secundario de reprocesar la misma barra, seccion 9/20 del audit)."""
+    fake.order_send_calls.clear()
+    fake._rates_cache.clear()
+    bot = _make_bot()
+    row = _prime_armed_signal(bot)
+
+    original_record = score_store.record
+
+    def _boom_record(*args, **kwargs):
+        raise TypeError("Object of type bool is not JSON serializable")  # mismo mensaje que en produccion
+
+    score_store.record = _boom_record
+    raised = False
+    try:
+        bot.process_closed_bar(row)
+    except Exception:
+        raised = True
+    finally:
+        score_store.record = original_record
+
+    return (list(fake.order_send_calls), (fake._next_ticket - 1 if fake.order_send_calls else None),
+            raised, bot._last_processed_time)
+
+
 def main() -> int:
     print("=== A. Escenario normal -- _compute_signal_quality() corre sin forzar fallas ===")
     calls_a, ticket_a = _run_scenario(force_sq_failure=False)
@@ -223,6 +256,16 @@ def main() -> int:
         check("request completo (dict) identico entre A y B", req_a == req_b)
     else:
         check("ambos escenarios colocaron una orden comparable", False, "no se puede comparar -- ver fallas arriba")
+
+    print("\n=== D. BOT-051.6.3 -- score_store.record() forzada a fallar (root cause real de BOT-051.6.2) ===")
+    calls_d, ticket_d, raised_d, last_processed_d = _run_scenario_persistence_failure()
+    check("se coloco exactamente 1 orden IGUAL si la persistencia revienta", len(calls_d) == 1, f"calls={len(calls_d)}")
+    check("process_closed_bar() NO propaga la excepcion de persistencia (aislamiento BOT-051.6.3)", not raised_d)
+    check("el request a order_send() sigue identico al escenario normal (A)",
+          calls_a and calls_d and calls_a[0] == calls_d[0])
+    check("self._last_processed_time SI avanza pese al fallo de persistencia "
+          "(evita reprocesar la misma barra, riesgo secundario del audit BOT-051.6.2)",
+          last_processed_d is not None and last_processed_d == 1_700_000_000 + 32 * 300)
 
     print(f"\n{len(FAILURES)} failing checks" if FAILURES else "\nALL CHECKS PASS")
     if FAILURES:
