@@ -109,6 +109,52 @@ def main() -> int:
               "full" in classes, f"classes={classes}")
         check('ya NO usa "wide3"', "wide3" not in classes, f"classes={classes}")
 
+    print("\n=== H. BOT-051.6.4 -- P&L flotante deduplicado en 'Posiciones y pendientes' ===")
+    render_pp_src = _function_source(html, "renderPositionsOrders")
+    check("renderPositionsOrders() ya NO muestra p.profit en las filas (deduplicado, vive solo en FLOTANTE)",
+          "p.profit" not in render_pp_src or "s + (p.profit" in render_pp_src,
+          "unica mencion esperada de p.profit es dentro del .reduce() de floating, no en el template de fila")
+    # separar el template de las filas (antes del .reduce del floating) del resto,
+    # para confirmar especificamente que NINGUNA fila (posicion o pendiente)
+    # interpola p.profit como contenido visual.
+    rows_template = render_pp_src.split("const floating")[0]
+    check("el template de las filas de posiciones/pendientes no interpola p.profit",
+          "fmtUSD(p.profit)" not in rows_template and "p.profit >=" not in rows_template,
+          rows_template)
+    check("posRows usa scoreBadgeOrUnavailable() (badge o placeholder neutral, nunca P&L)",
+          "scoreBadgeOrUnavailable(scores, p.ticket)" in render_pp_src)
+    check("orderRows (LIMIT pendiente) usa scoreBadgeOrUnavailable()",
+          "scoreBadgeOrUnavailable(scores, o.ticket)" in render_pp_src)
+    check("FLOTANTE sigue calculandose (sumatoria de p.profit) -- no se elimino el dato, solo se dejo de repetir",
+          "positions.reduce" in render_pp_src and 'getElementById("floating")' in render_pp_src)
+
+    print("\n=== I. scoreBadgeOrUnavailable() -- placeholder neutral, sin fallback legacy ni P&L como sustituto ===")
+    placeholder_src = _function_source(js, "scoreBadgeOrUnavailable")
+    check("scoreBadgeOrUnavailable() delega en scoreBadge() (mismo componente, sin duplicar HTML/popover)",
+          "scoreBadge(" in placeholder_src)
+    check('placeholder es un texto neutral ("SQ no disponible"), no un valor inventado',
+          "SQ no disponible" in placeholder_src)
+    legacy_or_pnl_tokens = ["Divergencia", "Tendencia", "CVP", "Nodo", "fmtUSD", "p.profit", "-1", "+1"]
+    leaked2 = [t for t in legacy_or_pnl_tokens if t in placeholder_src]
+    check("el placeholder no reintroduce calificacion legacy ni usa el P&L como sustituto de Signal Quality",
+          not leaked2, f"leaked={leaked2}")
+
+    print("\n=== J. Closed history ('Ultimas 20 operaciones') sigue con scoreBadge() sin cambios ===")
+    render_trades_src = _function_source(html, "renderTradesTable")
+    check("renderTradesTable() sigue usando scoreBadge() tal cual (no el placeholder de Posiciones/Pendientes)",
+          "scoreBadge(scores, t.position_id)" in render_trades_src)
+    check("renderTradesTable() NO usa scoreBadgeOrUnavailable() -- el comportamiento de la tabla de cerradas no cambia",
+          "scoreBadgeOrUnavailable" not in render_trades_src)
+
+    print("\n=== K. Lifecycle -- mismo `scores` (misma fuente /GET /scores) para pendiente/abierta/cerrada, sin recalculo ===")
+    check("renderPositionsOrders(positions, orders, scores) recibe `scores` como parametro (no lo recalcula)",
+          re.search(r"function renderPositionsOrders\([^)]*\bscores\b[^)]*\)", html) is not None)
+    check("renderTradesTable(trades, scores) recibe `scores` como parametro (misma fuente, no lo recalcula)",
+          re.search(r"function renderTradesTable\([^)]*\bscores\b[^)]*\)", html) is not None)
+    check("ambas funciones indexan por `ticket`/`position_id` (identidad ya demostrada en BOT-051.5), "
+          "nunca por un snapshot recalculado localmente",
+          "scoresMap[ticket]" in _function_source(js, "scoreBadge"))
+
     print(f"\n{len(FAILURES)} failing checks" if FAILURES else "\nALL CHECKS PASS")
     if FAILURES:
         for f in FAILURES:

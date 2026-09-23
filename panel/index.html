@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>pivot-x-sentinel</title>
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 <main>
@@ -101,7 +101,7 @@
 </section>
 
 </main>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 <script>
 function renderStatus(s) {
   const running = s.running;
@@ -167,23 +167,32 @@ function renderAccount(acc) {
 // "evolucionar el ícono existente en vez de crear una superficie redundante").
 // `scores` viene de GET /scores, indexado por el mismo `ticket` que trae
 // /positions y /orders (ver docstring de scoreBadge() en panel/app.js).
+//
+// BOT-051.6.4 -- el extremo derecho de cada fila es EXCLUSIVAMENTE Signal
+// Quality (scoreBadgeOrUnavailable()) -- el P&L flotante por posición
+// (p.profit) se sacó de aquí porque ya vive, sin duplicar, en la tarjeta
+// FLOTANTE (ver más abajo, mismo dato exacto: la sumatoria de p.profit).
+// Mostrar el mismo número dos veces en la misma pantalla era redundante y,
+// para el ticket que no tenía Signal Quality, daba la impresión visual de
+// que el P&L "reemplazaba" al ícono -- ver reports/BOT-051.6.4-* sección 5,
+// que confirma que nunca fue un reemplazo real de código: ambos siempre
+// convivieron en la misma fila desde que BOT-051.6 agregó el ícono.
 function renderPositionsOrders(positions, orders, scores) {
   const posRows = positions.map((p) => `
     <div class="pp-row">
       <span>Posición #${p.ticket} <span class="muted">· abierta</span></span>
-      <span class="pp-row-right">
-        <b class="${p.profit >= 0 ? "ok" : "bad"}">${fmtUSD(p.profit)}</b>
-        ${scoreBadge(scores, p.ticket)}
-      </span>
+      <span class="pp-row-right">${scoreBadgeOrUnavailable(scores, p.ticket)}</span>
     </div>`);
   const orderRows = orders.map((o) => `
     <div class="pp-row">
       <span>LIMIT #${o.ticket} <span class="muted">· pendiente</span></span>
-      <span class="pp-row-right">${scoreBadge(scores, o.ticket)}</span>
+      <span class="pp-row-right">${scoreBadgeOrUnavailable(scores, o.ticket)}</span>
     </div>`);
   document.getElementById("posPend").innerHTML =
     `<p class="pp-summary">Posiciones: ${positions.length} · Pendientes: ${orders.length}</p>` +
     posRows.join("") + orderRows.join("");
+  // FLOTANTE sigue siendo la ÚNICA superficie del P&L no realizado -- sin
+  // cambios de semántica, solo dejó de repetirse en las filas de arriba.
   const floating = positions.reduce((s, p) => s + (p.profit || 0), 0);
   document.getElementById("floating").textContent = fmtUSD(floating);
   document.getElementById("floating").className = "value " + (floating > 0 ? "ok" : floating < 0 ? "bad" : "");

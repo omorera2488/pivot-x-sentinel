@@ -157,6 +157,23 @@ function scoreBadge(scoresMap, ticket) {
     </span>`;
 }
 
+// BOT-051.6.4 -- variante de scoreBadge() SOLO para "Posiciones y pendientes"
+// (ver renderPositionsOrders() en panel/index.html): ese extremo derecho de
+// la fila ya no muestra el P&L flotante (deduplicado -- la tarjeta FLOTANTE
+// es la única superficie de ese dato, ver reports/BOT-051.6.4-*), así que
+// queda vacío del todo cuando el ticket no tiene signal_quality (ej. los dos
+// tickets reales que perdieron su persistencia por el bug de BOT-051.6.2,
+// corregido en BOT-051.6.3 -- sin snapshot t0 genuino, NUNCA se inventa uno).
+// Un texto neutral ("SQ no disponible") evita que la fila luzca rota, sin
+// caer en el fallback de la calificación legacy ni en el P&L como sustituto.
+// La tabla de "Últimas 20 operaciones" sigue usando scoreBadge() tal cual
+// (sin este placeholder) -- comportamiento sin cambios ahí.
+function scoreBadgeOrUnavailable(scoresMap, ticket) {
+  const badge = scoreBadge(scoresMap, ticket);
+  if (badge) return badge;
+  return `<span class="pp-sq-unavailable">SQ no disponible</span>`;
+}
+
 // Signal Quality (BOT-051.4, ver strategy/signal_quality.py): vector crudo
 // (Momentum/Alignment/Structure/Context + Direction), SIN score, SIN
 // tiers/colores que impliquen un ranking -- ver

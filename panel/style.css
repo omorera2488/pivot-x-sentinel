@@ -248,6 +248,18 @@ summary { cursor: pointer; color: var(--muted); }
 }
 .pp-row-right { display: flex; align-items: center; gap: 8px; }
 .pp-summary { margin-bottom: 6px; }
+/* BOT-051.6.4 -- placeholder neutral cuando un ticket no tiene Signal
+   Quality persistida (ver scoreBadgeOrUnavailable() en panel/app.js). Mismo
+   tono que .sq-unavailable/.score-icon (ninguno es un error ni "malo"),
+   NUNCA un color de alerta/rojo -- no es un fallo de la UI, es la ausencia
+   honesta de un dato que nunca se calculó/persistió (ej. los dos tickets
+   reales perdidos por el bug de BOT-051.6.2, corregido en BOT-051.6.3). */
+.pp-sq-unavailable {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--muted);
+  white-space: nowrap;
+}
 
 /* Signal Quality -- tarjeta de acumulacion OOS (BOT-051.5). Reusa
    .sample-grid/.sample-item (mismo look que "Muestra y riesgo") -- sin
