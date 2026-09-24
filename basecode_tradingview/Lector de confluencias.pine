@@ -1,0 +1,427 @@
+//@version=6
+indicator("Lector de confluencias", overlay=true, max_labels_count=500, max_lines_count=500)
+
+//─────────────────────────────────────
+// FUENTES DEL INDICADOR ORIGINAL
+//─────────────────────────────────────
+sellSource = input.source(close, "Señal de venta original", display=display.none)
+buySource = input.source(close, "Señal de compra original", display=display.none)
+
+resistenciaSource = input.source(close, "Resistencia original", display=display.none)
+soporteSource = input.source(close, "Soporte original", display=display.none)
+
+//─────────────────────────────────────
+// CONFIGURACIÓN
+//─────────────────────────────────────
+mostrarInicioD = input.bool(true, "Mostrar inicio de vela D", display=display.none)
+colorInicioD = input.color(color.black, "Color línea de inicio D", display=display.none)
+
+mostrarHCH = input.bool(true, "Mostrar HCH", display=display.none)
+
+mostrarEMAs = input.bool(true, "Mostrar EMA 50 y EMA 200", display=display.none)
+mostrarEMA200M15 = input.bool(true, "Mostrar EMA 200 M15 en M5", display=display.none)
+
+// Separación visual fija
+distanciaMarca = 0.30
+
+//─────────────────────────────────────
+// TEMPORALIDADES
+//─────────────────────────────────────
+esM5 = timeframe.isminutes and timeframe.multiplier == 5
+esD = timeframe.isdaily
+
+//═════════════════════════════════════
+// EMAs
+//═════════════════════════════════════
+ema50 = ta.ema(close, 50)
+ema200 = ta.ema(close, 200)
+
+//─────────────────────────────────────
+// EMA 200 M15 SUAVE EN M5
+//─────────────────────────────────────
+ema200M15Anterior = request.security(
+    syminfo.tickerid,
+    "15",
+    ta.ema(close, 200)[1],
+    gaps=barmerge.gaps_off,
+    lookahead=barmerge.lookahead_on
+)
+
+alphaEMA200 = 2.0 / 201.0
+
+ema200M15Suave = ema200M15Anterior + alphaEMA200 * (close - ema200M15Anterior)
+
+//─────────────────────────────────────
+// DIBUJAR EMAs
+//─────────────────────────────────────
+plot(
+    mostrarEMAs ? ema50 : na,
+    title="EMA 50",
+    color=#2196F3,
+    linewidth=2
+)
+
+plot(
+    mostrarEMAs ? ema200 : na,
+    title="EMA 200",
+    color=#616161,
+    linewidth=2
+)
+
+plot(
+    mostrarEMA200M15 and esM5 ? ema200M15Suave : na,
+    title="EMA 200 M15",
+    color=#FF8C00,
+    linewidth=2
+)
+
+//─────────────────────────────────────
+// APERTURA DE LA VELA DIARIA
+//─────────────────────────────────────
+openD = request.security(
+    syminfo.tickerid,
+    "D",
+    open,
+    gaps=barmerge.gaps_off,
+    lookahead=barmerge.lookahead_on
+)
+
+//─────────────────────────────────────
+// DETECTAR NUEVO DÍA
+//─────────────────────────────────────
+tiempoD = time("D")
+nuevoDia = ta.change(tiempoD) != 0
+
+//─────────────────────────────────────
+// LÍNEA DE APERTURA D
+//─────────────────────────────────────
+var line lineaAperturaD = na
+
+if nuevoDia
+    lineaAperturaD := line.new(
+        x1=bar_index,
+        y1=openD,
+        x2=bar_index,
+        y2=openD,
+        xloc=xloc.bar_index,
+        extend=extend.none,
+        color=colorInicioD,
+        width=2
+    )
+
+if not na(lineaAperturaD)
+    line.set_x2(lineaAperturaD, bar_index)
+    line.set_y1(lineaAperturaD, openD)
+    line.set_y2(lineaAperturaD, openD)
+
+if not na(lineaAperturaD)
+    line.set_color(lineaAperturaD, colorInicioD)
+
+//─────────────────────────────────────
+// LEER SEÑALES ORIGINALES
+//─────────────────────────────────────
+sellActivo = not na(sellSource) and sellSource != 0
+sellActivoAnterior = not na(sellSource[1]) and sellSource[1] != 0
+
+buyActivo = not na(buySource) and buySource != 0
+buyActivoAnterior = not na(buySource[1]) and buySource[1] != 0
+
+sellSignal = sellActivo and not sellActivoAnterior
+buySignal = buyActivo and not buyActivoAnterior
+
+//─────────────────────────────────────
+// DIRECCIÓN D
+//─────────────────────────────────────
+dBajistaEnSenal = close < openD
+dAlcistaEnSenal = close > openD
+
+ventaMatchD = sellSignal and dBajistaEnSenal
+compraMatchD = buySignal and dAlcistaEnSenal
+
+//─────────────────────────────────────
+// DISTANCIA VISUAL
+//─────────────────────────────────────
+atrVisual = ta.atr(14)
+separacion = atrVisual * distanciaMarca
+
+//═════════════════════════════════════
+// DETECTOR HCH
+//═════════════════════════════════════
+nuevaResistencia = not na(resistenciaSource) and (na(resistenciaSource[1]) or resistenciaSource != resistenciaSource[1])
+nuevoSoporte = not na(soporteSource) and (na(soporteSource[1]) or soporteSource != soporteSource[1])
+
+//─────────────────────────────────────
+// ÚLTIMAS 3 RESISTENCIAS
+//─────────────────────────────────────
+var float res1 = na
+var float res2 = na
+var float res3 = na
+
+var int resBar1 = na
+var int resBar2 = na
+var int resBar3 = na
+
+//─────────────────────────────────────
+// ÚLTIMOS 3 SOPORTES
+//─────────────────────────────────────
+var float sop1 = na
+var float sop2 = na
+var float sop3 = na
+
+var int sopBar1 = na
+var int sopBar2 = na
+var int sopBar3 = na
+
+//─────────────────────────────────────
+// HCH ACTIVOS
+//─────────────────────────────────────
+var line lineaHCHVenta = na
+var line lineaHCHCompra = na
+
+var float nivelHCHVentaActivo = na
+var float nivelHCHCompraActivo = na
+
+//═════════════════════════════════════
+// NUEVA RESISTENCIA
+//═════════════════════════════════════
+if nuevaResistencia and not esD
+
+    res3 := res2
+    resBar3 := resBar2
+
+    res2 := res1
+    resBar2 := resBar1
+
+    res1 := resistenciaSource
+    resBar1 := bar_index
+
+    if not na(res3) and not na(res2) and not na(res1)
+
+        alturaHCHVenta = res2 - math.min(res3, res1)
+
+        cabezaMayorVenta = res2 > res3 and res2 > res1
+
+        hombrosCompatiblesVenta = alturaHCHVenta > 0 and math.abs(res3 - res1) <= alturaHCHVenta * 1.25
+
+        hchResistencia = cabezaMayorVenta and hombrosCompatiblesVenta
+
+        if hchResistencia
+            nivelHCHVentaActivo := res1
+
+            if mostrarHCH
+                lineaHCHVenta := line.new(
+                    x1=resBar1,
+                    y1=res1,
+                    x2=resBar1 + 1,
+                    y2=res1,
+                    xloc=xloc.bar_index,
+                    extend=extend.none,
+                    color=color.red,
+                    width=4
+                )
+
+//═════════════════════════════════════
+// NUEVO SOPORTE
+//═════════════════════════════════════
+if nuevoSoporte and not esD
+
+    sop3 := sop2
+    sopBar3 := sopBar2
+
+    sop2 := sop1
+    sopBar2 := sopBar1
+
+    sop1 := soporteSource
+    sopBar1 := bar_index
+
+    if not na(sop3) and not na(sop2) and not na(sop1)
+
+        alturaHCHCompra = math.max(sop3, sop1) - sop2
+
+        cabezaMenorCompra = sop2 < sop3 and sop2 < sop1
+
+        hombrosCompatiblesCompra = alturaHCHCompra > 0 and math.abs(sop3 - sop1) <= alturaHCHCompra * 1.25
+
+        hchSoporte = cabezaMenorCompra and hombrosCompatiblesCompra
+
+        if hchSoporte
+            nivelHCHCompraActivo := sop1
+
+            if mostrarHCH
+                lineaHCHCompra := line.new(
+                    x1=sopBar1,
+                    y1=sop1,
+                    x2=sopBar1 + 1,
+                    y2=sop1,
+                    xloc=xloc.bar_index,
+                    extend=extend.none,
+                    color=color.red,
+                    width=4
+                )
+
+//─────────────────────────────────────
+// PIVOTE SOBRE HCH
+//─────────────────────────────────────
+hchVentaPivote = not esD and mostrarHCH and sellSignal and not na(nivelHCHVentaActivo) and not na(resistenciaSource) and math.abs(resistenciaSource - nivelHCHVentaActivo) <= syminfo.mintick
+
+hchCompraPivote = not esD and mostrarHCH and buySignal and not na(nivelHCHCompraActivo) and not na(soporteSource) and math.abs(soporteSource - nivelHCHCompraActivo) <= syminfo.mintick
+
+//─────────────────────────────────────
+// SI APARECE PIVOTE HCH
+// QUITAR LÍNEA ROJA
+//─────────────────────────────────────
+if hchVentaPivote
+    if not na(lineaHCHVenta)
+        line.delete(lineaHCHVenta)
+    lineaHCHVenta := na
+    nivelHCHVentaActivo := na
+
+if hchCompraPivote
+    if not na(lineaHCHCompra)
+        line.delete(lineaHCHCompra)
+    lineaHCHCompra := na
+    nivelHCHCompraActivo := na
+
+//─────────────────────────────────────
+// ALARGAR LÍNEAS HCH
+//─────────────────────────────────────
+if not esD and mostrarHCH and not na(lineaHCHVenta) and not na(nivelHCHVentaActivo)
+    if not na(resistenciaSource) and math.abs(resistenciaSource - nivelHCHVentaActivo) <= syminfo.mintick
+        line.set_x2(lineaHCHVenta, bar_index)
+        line.set_y1(lineaHCHVenta, nivelHCHVentaActivo)
+        line.set_y2(lineaHCHVenta, nivelHCHVentaActivo)
+
+if not esD and mostrarHCH and not na(lineaHCHCompra) and not na(nivelHCHCompraActivo)
+    if not na(soporteSource) and math.abs(soporteSource - nivelHCHCompraActivo) <= syminfo.mintick
+        line.set_x2(lineaHCHCompra, bar_index)
+        line.set_y1(lineaHCHCompra, nivelHCHCompraActivo)
+        line.set_y2(lineaHCHCompra, nivelHCHCompraActivo)
+
+//─────────────────────────────────────
+// CLASIFICACIÓN DE SEÑALES
+//─────────────────────────────────────
+ventaDHCH = not esD and ventaMatchD and hchVentaPivote
+ventaDsolo = not esD and ventaMatchD and not hchVentaPivote
+ventaHCHsolo = not esD and sellSignal and hchVentaPivote and not ventaMatchD
+ventaNormal = not esD and sellSignal and not ventaMatchD and not hchVentaPivote
+
+compraDHCH = not esD and compraMatchD and hchCompraPivote
+compraDsolo = not esD and compraMatchD and not hchCompraPivote
+compraHCHsolo = not esD and buySignal and hchCompraPivote and not compraMatchD
+compraNormal = not esD and buySignal and not compraMatchD and not hchCompraPivote
+
+//─────────────────────────────────────
+// POSICIONES
+//─────────────────────────────────────
+precioVenta = not na(resistenciaSource) ? resistenciaSource + separacion : na
+precioCompra = not na(soporteSource) ? soporteSource - separacion : na
+
+//─────────────────────────────────────
+// VENTA NORMAL
+//─────────────────────────────────────
+plotshape(
+    ventaNormal ? precioVenta : na,
+    title="Venta normal",
+    style=shape.labeldown,
+    location=location.absolute,
+    color=#C31E14,
+    text="",
+    size=size.small
+)
+
+//─────────────────────────────────────
+// VENTA D✓
+//─────────────────────────────────────
+plotshape(
+    ventaDsolo ? precioVenta : na,
+    title="Venta D",
+    style=shape.labeldown,
+    location=location.absolute,
+    color=#AA231C,
+    text="D✓",
+    textcolor=#FFFFFF,
+    size=size.small
+)
+
+//─────────────────────────────────────
+// VENTA HCH✓
+//─────────────────────────────────────
+plotshape(
+    ventaHCHsolo ? precioVenta : na,
+    title="Venta HCH",
+    style=shape.labeldown,
+    location=location.absolute,
+    color=#7850A0,
+    text="HCH✓",
+    textcolor=#FFFFFF,
+    size=size.small
+)
+
+//─────────────────────────────────────
+// VENTA D✓ + HCH✓
+//─────────────────────────────────────
+plotshape(
+    ventaDHCH ? precioVenta : na,
+    title="Venta D + HCH",
+    style=shape.labeldown,
+    location=location.absolute,
+    color=#8C2D37,
+    text="D✓ HCH✓",
+    textcolor=#FFFFFF,
+    size=size.small
+)
+
+//─────────────────────────────────────
+// COMPRA NORMAL
+//─────────────────────────────────────
+plotshape(
+    compraNormal ? precioCompra : na,
+    title="Compra normal",
+    style=shape.labelup,
+    location=location.absolute,
+    color=#FFDC00,
+    text="",
+    size=size.small
+)
+
+//─────────────────────────────────────
+// COMPRA D✓
+//─────────────────────────────────────
+plotshape(
+    compraDsolo ? precioCompra : na,
+    title="Compra D",
+    style=shape.labelup,
+    location=location.absolute,
+    color=#19915A,
+    text="D✓",
+    textcolor=#FFFFFF,
+    size=size.small
+)
+
+//─────────────────────────────────────
+// COMPRA HCH✓
+//─────────────────────────────────────
+plotshape(
+    compraHCHsolo ? precioCompra : na,
+    title="Compra HCH",
+    style=shape.labelup,
+    location=location.absolute,
+    color=#7850A0,
+    text="HCH✓",
+    textcolor=#FFFFFF,
+    size=size.small
+)
+
+//─────────────────────────────────────
+// COMPRA D✓ + HCH✓
+//─────────────────────────────────────
+plotshape(
+    compraDHCH ? precioCompra : na,
+    title="Compra D + HCH",
+    style=shape.labelup,
+    location=location.absolute,
+    color=#237D69,
+    text="D✓ HCH✓",
+    textcolor=#FFFFFF,
+    size=size.small
+)
