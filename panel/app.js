@@ -153,8 +153,26 @@ function scoreBadge(scoresMap, ticket) {
       <span class="score-icon" tabindex="0">ⓘ</span>
       <div class="score-pop">
         ${signalQualitySection(s.signal_quality, s.signal_quality_diagnostics)}
+        ${hchSection(s.hch)}
       </div>
     </span>`;
+}
+
+// BOT-052.2 -- HCH ("Lector de confluencias", ver strategy/hch.py) es shadow
+// puro: observacional, sin score, sin gate, sin influir en absoluto sobre
+// Signal Quality -- por eso vive en su PROPIA seccion, debajo y claramente
+// separada (mismo `.sq-section`/`.sq-title`/`.sq-row` neutro que ya usa
+// Signal Quality, sin agregar una clase de color nueva ni ningun estilo que
+// sugiera "bueno/malo"). Sin `hch` (tickets de antes de BOT-052.2, o donde
+// el calculo no pudo completarse) no muestra nada -- mismo criterio que el
+// resto del popover: nunca inventar un dato.
+function hchSection(hch) {
+  if (!hch) return "";
+  return `
+    <div class="sq-section">
+      <div class="sq-title">HCH — shadow, sin gate (BOT-052.2)</div>
+      <div class="sq-row"><span>Estado</span><b>${escapeHtml(hch.hch_state || "--")}</b></div>
+    </div>`;
 }
 
 // BOT-051.6.4 -- variante de scoreBadge() SOLO para "Posiciones y pendientes"

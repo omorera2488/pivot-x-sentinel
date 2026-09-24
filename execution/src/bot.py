@@ -40,6 +40,7 @@ opera este bot asume el riesgo (ver disclaimer en README.md).
 """
 from __future__ import annotations
 
+import math
 import threading
 import time as time_mod
 from collections import deque
@@ -49,6 +50,7 @@ from datetime import datetime, timedelta, timezone
 import MetaTrader5 as mt5
 
 from strategy.engine import StrategyParams
+from strategy.hch import HCHEngine, HCH_SCHEMA_VERSION, hch_state_for_signal
 from strategy.live_signal import LiveSignalEngine
 from strategy.profiles import get_profile, normalize_profile_name
 from strategy import scoring
@@ -162,6 +164,13 @@ class LiveExecutionBot:
         self.bar_seconds = SECONDS_BY_PROFILE[self.profile_name]
 
         self.signal_engine: LiveSignalEngine | None = None
+        # BOT-052.2 -- observador de HCH ("Lector de confluencias"), shadow-only.
+        # Ver strategy/hch.py::HCHEngine para el contrato completo. Se crea/
+        # recalienta junto con signal_engine (replay_startup()) y avanza UNA
+        # vez por barra cerrada, SIEMPRE, tenga o no señal esa barra -- nunca
+        # participa de ninguna decision de entrada/salida/orden.
+        self.hch_engine: HCHEngine | None = None
+        self._symbol_point: float | None = None  # mintick, seteado en connect() -- ver strategy/hch.py
         self._last_processed_time: int | None = None
         # BOT-051.4 -- contador monotonico de velas cerradas procesadas por
         # ESTA instancia del bot (incluye replay_startup, ver
@@ -230,6 +239,10 @@ class LiveExecutionBot:
         self._filling_mode = resolve_filling_mode(self.symbol)
         self._offset_seconds = measure_broker_offset_seconds(self.symbol)
         self._contract_size = info.trade_contract_size
+        # BOT-052.2 -- resolucion de precio real del simbolo (leida de MT5, no
+        # hardcodeada a XAUUSD -- "multi-asset safe by design"), usada como
+        # mintick por strategy.hch.HCHEngine.step() (ver ese modulo).
+        self._symbol_point = info.point
         acc = mt5.account_info()
         self._log(f"Conectado: cuenta {acc.login} server {acc.server} simbolo {self.symbol} "
                   f"perfil {self.profile_name} magic {self.magic} dry_run={self.dry_run}")
@@ -253,7 +266,23 @@ class LiveExecutionBot:
 
     def replay_startup(self) -> None:
         """Reconstruye armado/bloque HTF sobre historial reciente, SIN
-        colocar ninguna orden (spec-live-execution.md #4)."""
+        colocar ninguna orden (spec-live-execution.md #4).
+
+        BOT-052.2 -- este mismo replay recalienta `self.hch_engine`
+        (strategy.hch.HCHEngine) con las MISMAS barras, porque HCH depende
+        del mismo flujo de resistencia/soporte/señal cruda que armado/bloque
+        HTF. `lookback_buckets` (default 3 -> 2400min -> 480 barras M5) no se
+        eligio pensando en HCH originalmente (BOT-051.4), pero se verifico
+        empiricamente que alcanza de sobra: sobre las ~100.500 barras del
+        parquet historico, el peor caso observado para acumular los 3
+        niveles de venta Y los 3 de compra desde un arranque en frio fue 276
+        barras (300 puntos de arranque muestreados al azar, seed=11) -- muy
+        por debajo de 480. No se inventa un horizonte de calentamiento nuevo
+        (BOT-052.2 Fase 5): se reusa el que ya existe para armado/bloque,
+        con margen demostrado. Si el historial es insuficiente (rama de
+        abajo), `hch_engine` arranca en frio de todas formas -- sin niveles
+        acumulados, cualquier LIMIT que nazca antes de que HCH se recaliente
+        organicamente queda `UNAVAILABLE` (nunca un estado inventado)."""
         lookback_min = self.lookback_buckets * self.params.periodos_htf_min
         now = datetime.now(timezone.utc)
         start = now - timedelta(minutes=lookback_min + 2 * self.bar_seconds / 60)
@@ -261,10 +290,12 @@ class LiveExecutionBot:
         if rates is None or len(rates) < 2:
             self._log("Replay: historial insuficiente para el lookback pedido -- arranca en calentamiento (igual que backtest).")
             self.signal_engine = LiveSignalEngine(self.params)
+            self.hch_engine = HCHEngine()
             return
 
         closed = rates[:-1]  # la ultima posicion es la vela en formacion -- nunca se usa
         self.signal_engine = LiveSignalEngine(self.params)
+        self.hch_engine = HCHEngine()
         for r in closed:
             # NO se corrige por _offset_seconds aca (enmienda 2026-09-04,
             # spec-estrategia.md #3.1): el timestamp de apertura que entrega
@@ -273,12 +304,18 @@ class LiveExecutionBot:
             # situada justo en el limite de sesion (ej. 22:00:00) al bloque
             # equivocado -- measure_broker_offset_seconds() sigue midiendose
             # y logueandose (uso diagnostico), pero ya no altera esta vela.
-            self.signal_engine.process_bar(int(r["time"]),
+            prev_bucket = self.signal_engine._cur_bucket
+            signal = self.signal_engine.process_bar(int(r["time"]),
                                             float(r["high"]), float(r["low"]), float(r["close"]))
             self._closed_bar_count += 1  # BOT-051.4 -- ver docstring del campo en __init__
+            self._hch_step_for_bar(signal, self.signal_engine._cur_bucket != prev_bucket)
         self._last_processed_time = int(closed[-1]["time"])
+        have3 = not (math.isnan(self.hch_engine.res1) or math.isnan(self.hch_engine.res2)
+                     or math.isnan(self.hch_engine.res3) or math.isnan(self.hch_engine.sop1)
+                     or math.isnan(self.hch_engine.sop2) or math.isnan(self.hch_engine.sop3))
         self._log(f"Replay: {len(closed)} velas cerradas procesadas ({lookback_min}min de lookback). "
-             f"armadoVenta={self.signal_engine.armado_venta} armadoCompra={self.signal_engine.armado_compra}")
+             f"armadoVenta={self.signal_engine.armado_venta} armadoCompra={self.signal_engine.armado_compra} "
+             f"HCH recalentado={have3}")
 
     # ---- estado real del broker ----------------------------------------
 
@@ -588,6 +625,33 @@ class LiveExecutionBot:
             return None
         return wins / (wins + losses) * 100.0
 
+    def _hch_step_for_bar(self, signal, new_bucket: bool):
+        """BOT-052.2 -- avanza `self.hch_engine` UNA barra (strategy.hch.
+        HCHEngine.step(), la unica implementacion de la geometria HCH, ver
+        ese modulo). Se llama SIEMPRE, haya o no señal esa barra -- el
+        seguimiento de niveles/pivotes de HCH es continuo (Pine `var`, sin
+        reset), no depende de que dispare una flecha.
+
+        `signal`: el BarSignal que signal_engine.process_bar() acaba de
+        devolver para ESTA barra. `new_bucket`: True si esta barra es la
+        primera del bloque HTF vigente (mismo booleano que
+        process_closed_bar()/replay_startup() ya calculan comparando
+        signal_engine._cur_bucket antes/despues de process_bar()) -- replica
+        Pine L359-L360 (`nuevoBucket ? na : resistencia/soporte`), la mascara
+        que "plotea" el nivel: NaN en la primera barra de cada bloque, el
+        valor tal cual el resto de las barras. `signal.senal_venta`/
+        `senal_compra` son la flecha CRUDA de esta barra (BOT-051.4/live_signal.py
+        ya las expone sin filtrar por validez de stop ni concurrencia -- BOT-052.1
+        seccion 3.1 encontro que el Lector de confluencias real consume esa
+        misma corriente cruda, no solo las LIMITs finalmente aceptadas)."""
+        res_plotted = math.nan if new_bucket else signal.resistencia
+        sup_plotted = math.nan if new_bucket else signal.soporte
+        mintick = self._symbol_point or 0.001
+        return self.hch_engine.step(
+            self._closed_bar_count, res_plotted, sup_plotted,
+            signal.senal_venta, signal.senal_compra, mintick,
+        )
+
     def _score_entry(self, direction: int, entry: float, stop: float, target: float,
                       raw_bar_time: int) -> scoring.EntryScore | None:
         """Califica la entrada (Divergencia + Tendencia + CVP, ver
@@ -766,7 +830,14 @@ class LiveExecutionBot:
         prev_bucket = self.signal_engine._cur_bucket
         signal = self.signal_engine.process_bar(t, high, low, close)
         self._closed_bar_count += 1  # BOT-051.4 -- ver docstring del campo en __init__
-        if self.signal_engine._cur_bucket != prev_bucket:
+        new_bucket = self.signal_engine._cur_bucket != prev_bucket
+        # BOT-052.2 -- HCH avanza SIEMPRE, una vez por barra cerrada, haya o
+        # no señal (el seguimiento de niveles/pivotes de strategy.hch.HCHEngine
+        # es continuo, ver _hch_step_for_bar()). El resultado de ESTA barra es
+        # el que se usa mas abajo si una señal dispara justo ahora -- shadow
+        # puro, no participa de nada de lo que sigue en esta funcion.
+        hch_step = self._hch_step_for_bar(signal, new_bucket)
+        if new_bucket:
             # _cur_bucket ya es el inicio en segundos unix UTC del bloque
             # (htf_session.bucket_start_utc_seconds(), ver strategy/live_signal.py
             # -- enmienda 2026-09-04, spec-estrategia.md #3.1), no un id a
@@ -812,6 +883,19 @@ class LiveExecutionBot:
                     except Exception as e:
                         self._log(f"AVISO: Signal Quality fallo de forma inesperada ({e!r}) -- se coloca sin snapshot.")
                         signal_quality, sq_diagnostics = None, {"fatal_reason": "unexpected_exception", "error": repr(e)}
+                    # BOT-052.2 -- snapshot HCH congelado en el MISMO momento
+                    # causal que entry_score/signal_quality arriba: usa
+                    # exclusivamente el resultado de hch_step ya calculado
+                    # para ESTA barra (nunca recalculado despues, nunca
+                    # tocado por lo que pase con el fill/cierre -- Fase 3,
+                    # "once attached to a LIMIT/trade, never recompute it").
+                    # No puede influir en _place_order(): se calcula ANTES,
+                    # no recibe stop/target/volumen, no devuelve nada que ese
+                    # metodo lea. hch_state_for_signal() es puro (no toca MT5,
+                    # no lanza salvo un bug de programacion -- no hace falta
+                    # el mismo try/except defensivo que _compute_signal_quality()
+                    # porque no depende de ninguna llamada a MT5/IO).
+                    hch_state, hch_audit = hch_state_for_signal(signal.dir, hch_step)
                     ticket = self._place_order(signal.dir, signal.entry, signal.stop, signal.target)
                     # BOT-051.6.3 -- aislamiento explicito (root cause: BOT-051.6.2,
                     # un numpy.bool_ sin castear en signal_quality.py hacia
@@ -826,15 +910,30 @@ class LiveExecutionBot:
                     # no se toca ticket/sl/tp/volumen, no hay un segundo
                     # order_send().
                     if ticket is not None and (entry_score is not None or signal_quality is not None):
+                        # BOT-052.2 -- el snapshot HCH viaja en la MISMA linea
+                        # que score/signal_quality (misma clave `ticket`,
+                        # mismo archivo, ver execution/src/score_store.py) --
+                        # asi queda automaticamente joineable con los 4
+                        # factores de Signal Quality para el analisis futuro
+                        # (Fase 4), sin una segunda fuente de verdad ni un
+                        # segundo archivo.
+                        hch_snapshot = {
+                            "hch_state": hch_state,
+                            "hch_version": HCH_SCHEMA_VERSION,
+                            "hch_captured_at": datetime.now(timezone.utc).isoformat(),
+                            "hch_consumed_on_signal_bar": self._closed_bar_count,
+                            **hch_audit,
+                        }
                         try:
                             score_store.record(
                                 self.symbol, self.magic, ticket,
                                 entry_score.to_dict() if entry_score is not None else None,
                                 signal_quality=signal_quality.to_dict() if signal_quality is not None else None,
                                 signal_quality_diagnostics=sq_diagnostics,
+                                hch=hch_snapshot,
                             )
                         except Exception as e:
-                            self._log(f"ERROR: no se pudo persistir la calificacion/Signal Quality del ticket "
+                            self._log(f"ERROR: no se pudo persistir la calificacion/Signal Quality/HCH del ticket "
                                       f"#{ticket} ({e!r}) -- la orden ya esta colocada, no se ve afectada.")
 
         self._last_processed_time = int(r["time"])

@@ -172,10 +172,11 @@ def test_prefix_and_future_perturbation():
 
 
 def test_static_no_lookahead_patterns():
-    src = (REPO_ROOT / "scripts" / "confluence_reader.py").read_text(encoding="utf-8")
     pats = [r"shift\(\s*-", r"center\s*=\s*True", r"\[\s*i\s*\+\s*\d", r"\[\s*b\s*\+\s*\d", r"iloc\[\s*-"]
-    hits = [p for p in pats if re.search(p, src)]
-    check("confluence_reader.py has no negative shifts / centered windows / [i+k] indexing", not hits, str(hits))
+    for rel in ("scripts/confluence_reader.py", "strategy/hch.py"):
+        src = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        hits = [p for p in pats if re.search(p, src)]
+        check(f"{rel} has no negative shifts / centered windows / [i+k] indexing", not hits, str(hits))
 
 
 if __name__ == "__main__":

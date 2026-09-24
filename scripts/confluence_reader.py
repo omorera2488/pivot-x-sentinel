@@ -31,10 +31,14 @@ Every function below is causal: the value at bar i depends only on bars <= i.
 from __future__ import annotations
 
 import math
+import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, para "import strategy"
 
 # ---------------------------------------------------------------------------
 # Daily Open (`D`) -- Pine L81-L87 + L135-L139
@@ -117,14 +121,23 @@ def d_state(direction: int, close_i: float, d_open_i: float, available: bool) ->
 
 
 # ---------------------------------------------------------------------------
-# HCH -- Pine L150-L283. Emulated bar by bar with the same `var` state.
+# HCH -- Pine L150-L283.
+#
+# BOT-052.2: the per-bar state machine itself moved to `strategy/hch.py`
+# (`HCHEngine`) so production (`execution/src/bot.py`) and research (here)
+# share ONE implementation -- see that module's docstring for the full Pine
+# line-number provenance. This function is now a thin batch wrapper: same
+# public signature/return shape as before BOT-052.2, so
+# `scripts/test_confluence_reader.py`'s 25 pre-existing tests (unchanged)
+# still exercise it end to end and prove the refactor is behaviour-preserving.
 # ---------------------------------------------------------------------------
-HCH_SHOULDER_TOL = 1.25   # Pine L204/L243, canonical value, not tuned
+from strategy.hch import HCH_SHOULDER_TOL, HCHEngine  # noqa: E402
 
 
 def emulate_hch(res_src: np.ndarray, sup_src: np.ndarray, sell_sig: np.ndarray, buy_sig: np.ndarray,
                 mintick: float):
-    """Bar-by-bar emulation of the Pine HCH detector.
+    """Bar-by-bar emulation of the Pine HCH detector (batch wrapper around
+    `strategy.hch.HCHEngine`, see that module for the canonical logic).
 
     res_src/sup_src: the plotted Resistencia/Soporte series (NaN = na).
     sell_sig/buy_sig: bool arrays, the rising edge of the signal plots.
@@ -142,58 +155,21 @@ def emulate_hch(res_src: np.ndarray, sup_src: np.ndarray, sell_sig: np.ndarray, 
     out["hch_sell_formed"] = np.zeros(n, dtype=bool)
     out["hch_buy_formed"] = np.zeros(n, dtype=bool)
 
-    nan = math.nan
-    res1 = res2 = res3 = nan
-    sop1 = sop2 = sop3 = nan
-    lvl_sell = lvl_buy = nan
-    form_sell = form_buy = nan
-    prev_res = prev_sup = nan
-    isn = math.isnan
+    engine = HCHEngine()
     for i in range(n):
-        r = res_src[i]
-        s = sup_src[i]
-        # L150-L151: a "new" level is any change of the plotted value
-        new_res = (not isn(r)) and (isn(prev_res) or r != prev_res)
-        new_sup = (not isn(s)) and (isn(prev_sup) or s != prev_sup)
-        if new_res:                                   # L187-L209
-            res3, res2, res1 = res2, res1, r
-            if not (isn(res3) or isn(res2) or isn(res1)):
-                altura = res2 - min(res3, res1)
-                cabeza = res2 > res3 and res2 > res1
-                hombros = altura > 0 and abs(res3 - res1) <= altura * HCH_SHOULDER_TOL
-                if cabeza and hombros:
-                    lvl_sell = res1
-                    form_sell = i
-                    out["hch_sell_formed"][i] = True
-        if new_sup:                                   # L226-L248
-            sop3, sop2, sop1 = sop2, sop1, s
-            if not (isn(sop3) or isn(sop2) or isn(sop1)):
-                altura = max(sop3, sop1) - sop2
-                cabeza = sop2 < sop3 and sop2 < sop1
-                hombros = altura > 0 and abs(sop3 - sop1) <= altura * HCH_SHOULDER_TOL
-                if cabeza and hombros:
-                    lvl_buy = sop1
-                    form_buy = i
-                    out["hch_buy_formed"][i] = True
-        out["hch_sell_level"][i] = lvl_sell
-        out["hch_buy_level"][i] = lvl_buy
-        out["hch_sell_form_bar"][i] = form_sell
-        out["hch_buy_form_bar"][i] = form_buy
-        # L265-L267: HCH check = signal while the plotted level still equals the active HCH level
-        sp = bool(sell_sig[i]) and not isn(lvl_sell) and not isn(r) and abs(r - lvl_sell) <= mintick
-        bp = bool(buy_sig[i]) and not isn(lvl_buy) and not isn(s) and abs(s - lvl_buy) <= mintick
-        out["sell_pivot"][i] = sp
-        out["buy_pivot"][i] = bp
-        # L273-L283: a used HCH level is consumed (one check per HCH)
-        if sp:
-            lvl_sell = nan
-        if bp:
-            lvl_buy = nan
-        out["res1"][i], out["res2"][i], out["res3"][i] = res1, res2, res3
-        out["sop1"][i], out["sop2"][i], out["sop3"][i] = sop1, sop2, sop3
-        out["new_res"][i] = new_res
-        out["new_sup"][i] = new_sup
-        prev_res, prev_sup = r, s
+        r = engine.step(i, res_src[i], sup_src[i], bool(sell_sig[i]), bool(buy_sig[i]), mintick)
+        out["sell_pivot"][i] = r.sell_pivot
+        out["buy_pivot"][i] = r.buy_pivot
+        out["hch_sell_formed"][i] = r.hch_sell_formed
+        out["hch_buy_formed"][i] = r.hch_buy_formed
+        out["res1"][i], out["res2"][i], out["res3"][i] = r.res1, r.res2, r.res3
+        out["sop1"][i], out["sop2"][i], out["sop3"][i] = r.sop1, r.sop2, r.sop3
+        out["hch_sell_level"][i] = r.hch_sell_level
+        out["hch_buy_level"][i] = r.hch_buy_level
+        out["hch_sell_form_bar"][i] = r.hch_sell_form_bar
+        out["hch_buy_form_bar"][i] = r.hch_buy_form_bar
+        out["new_res"][i] = r.new_res
+        out["new_sup"][i] = r.new_sup
     return out
 
 

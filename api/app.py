@@ -321,7 +321,14 @@ def scores(symbol: str = DEFAULT_SYMBOL, magic: int = DEFAULT_MAGIC):
     por que cada factor del vector quedo `UNAVAILABLE` (`warmup`/
     `alignment_history`/`structure_replay_mismatch`/`other`), SEPARADA del
     vector en si -- el panel la usa solo para mostrar el motivo junto a cada
-    factor, nunca para alterar `signal_quality`. `None` cuando no aplica."""
+    factor, nunca para alterar `signal_quality`. `None` cuando no aplica.
+
+    `hch` (BOT-052.2): snapshot inmutable del estado de HCH ("Lector de
+    confluencias", ver `strategy/hch.py`) al nacer la LIMIT --
+    `hch_state` (`HCH`/`NO_HCH`/`UNAVAILABLE`) + campos de auditoria
+    (pivotes/nivel activo/barra de formacion). Observacional puro, shadow --
+    nunca participa en la decision de operar, nunca modifica Signal Quality.
+    `None` en registros previos a BOT-052.2."""
     sym = _resolve_query_symbol(symbol)
     return score_store.load_all(sym, magic)
 

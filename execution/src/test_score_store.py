@@ -138,6 +138,29 @@ def main() -> int:
             raw_json_ok = False
         check("la linea escrita en disco es JSON valido (no quedo a medio escribir)", raw_json_ok)
 
+        print("\n=== I. BOT-052.2 -- hch (snapshot HCH) viaja en la MISMA linea, joineable con signal_quality ===")
+        hch_dict = {
+            "hch_state": "HCH", "hch_version": "1.0.0",
+            "hch_captured_at": "2026-09-24T10:00:00+00:00",
+            "hch_consumed_on_signal_bar": 42,
+            "hch_pivot_1": 4300.5, "hch_pivot_2": 4310.2, "hch_pivot_3": 4298.1,
+            "hch_active_level": 4300.5, "hch_formation_bar": 39,
+        }
+        score_store.record("XAUUSDc", 900001, 777, {"total": 1}, signal_quality=sq_dict, hch=hch_dict)
+        out9 = score_store.load_all("XAUUSDc", 900001)
+        check("ticket 777 trae hch completo, byte-identico a lo que se paso", out9[777]["hch"] == hch_dict)
+        check("ticket 777 sigue trayendo signal_quality (misma linea, ambos joineables por `ticket`)",
+              out9[777]["signal_quality"] == sq_dict)
+        check("ticket 333 (sin hch, secciones previas) sigue en None -- backward compatible",
+              out9[333]["hch"] is None)
+        check("linea legacy sin la clave (ticket 222) tambien queda en None, no rompe la lectura",
+              out9[222]["hch"] is None)
+        # hch=None (default) no debe agregar la clave -- comportamiento identico
+        # al de antes de BOT-052.2 para cualquier llamador que no lo pase.
+        score_store.record("XAUUSDc", 900001, 888, {"total": 0}, signal_quality=sq_dict)
+        out10 = score_store.load_all("XAUUSDc", 900001)
+        check("record() sin pasar hch sigue funcionando igual que antes (hch=None)", out10[888]["hch"] is None)
+
     print(f"\n{len(FAILURES)} failing checks" if FAILURES else "\nALL CHECKS PASS")
     if FAILURES:
         for f in FAILURES:

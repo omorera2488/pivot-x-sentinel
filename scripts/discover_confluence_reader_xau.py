@@ -37,6 +37,7 @@ sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import confluence_reader as cr  # noqa: E402
+from strategy import hch as hch_mod  # noqa: E402 -- BOT-052.2: HCH_SHOULDER_TOL now lives here
 
 DATA_PATH = REPO_ROOT / "backtests" / "data" / "XAUUSDc_M5_latest.parquet"
 REPORTS = REPO_ROOT / "reports"
@@ -384,10 +385,15 @@ def main():
     # HCH tolerance sensitivity (predeclared, symmetric, small: 1.00 / 1.25 / 1.50)
     print("-- HCH shoulder tolerance sensitivity (predeclared 1.00/1.25/1.50; 1.25 = Pine canonical)")
     for tol in (1.00, 1.25, 1.50):
-        old = cr.HCH_SHOULDER_TOL
-        cr.HCH_SHOULDER_TOL = tol
+        # BOT-052.2: the tolerance constant moved to strategy/hch.py (single
+        # canonical implementation, shared with production) -- mutate it
+        # there so HCHEngine.step() (which reads its OWN module's global)
+        # actually picks up the sensitivity value, not confluence_reader's
+        # now-inert re-exported copy.
+        old = hch_mod.HCH_SHOULDER_TOL
+        hch_mod.HCH_SHOULDER_TOL = tol
         hh = cr.emulate_hch(f["res_src"], f["sup_src"], f["sell_sig"], f["buy_sig"], cr.MINTICK_PRIMARY)
-        cr.HCH_SHOULDER_TOL = old
+        hch_mod.HCH_SHOULDER_TOL = old
         flag = np.array([bool(hh["sell_pivot" if d < 0 else "buy_pivot"][b]) for b, d in zip(bars_a, dirs)])
         fl_b = flag[ub_mask.to_numpy()]
         a, b = B["pnl_r"].to_numpy()[fl_b], B["pnl_r"].to_numpy()[~fl_b]

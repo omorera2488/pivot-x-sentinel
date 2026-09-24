@@ -121,6 +121,7 @@ sys.modules["MetaTrader5"] = fake  # ANTES de importar execution.src.bot
 
 from execution.src.bot import LiveExecutionBot  # noqa: E402
 from execution.src import score_store  # noqa: E402
+from strategy.hch import HCHEngine  # noqa: E402
 from strategy.live_signal import LiveSignalEngine  # noqa: E402
 
 FAILURES: list[str] = []
@@ -155,7 +156,9 @@ def _make_bot() -> LiveExecutionBot:
     bot._filling_mode = 1
     bot._offset_seconds = 0.0
     bot._contract_size = 100.0
+    bot._symbol_point = 0.001  # BOT-052.2 -- mintick, lo que connect() setea de info.point
     bot.signal_engine = LiveSignalEngine(bot.params)
+    bot.hch_engine = HCHEngine()  # BOT-052.2 -- lo que replay_startup() habria dejado listo
     return bot
 
 

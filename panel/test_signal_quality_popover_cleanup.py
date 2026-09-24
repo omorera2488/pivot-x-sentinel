@@ -155,6 +155,27 @@ def main() -> int:
           "nunca por un snapshot recalculado localmente",
           "scoresMap[ticket]" in _function_source(js, "scoreBadge"))
 
+    print("\n=== L. BOT-052.2 -- HCH shadow: seccion propia, separada de Signal Quality, sin score/gate ===")
+    score_badge_src2 = _function_source(js, "scoreBadge")
+    check("scoreBadge() llama a hchSection() (misma superficie que Signal Quality, sin duplicar popover)",
+          "hchSection(" in score_badge_src2)
+    hch_section_src = _function_source(js, "hchSection")
+    check("hchSection() muestra el hch_state crudo (HCH/NO_HCH/UNAVAILABLE), sin traducirlo a un color/score",
+          "hch_state" in hch_section_src)
+    # "sin gate"/"shadow" son las etiquetas INTENCIONALES del titulo (ver
+    # check de abajo) -- lo que se busca aca es la ausencia de una accion de
+    # gate real (bloquear/filtrar/rechazar) o de un score agregado, no la
+    # ausencia literal de la palabra "gate".
+    no_gate_tokens = ["GOOD", "BAD", "recommend", "should", "/100", "block", "reject", "filter"]
+    leaked3 = [t for t in no_gate_tokens if t.lower() in hch_section_src.lower()]
+    check("hchSection() no implica una decision de gate/recomendacion ni un score agregado",
+          not leaked3, f"leaked={leaked3}")
+    check('hchSection() esta rotulada explicitamente como "shadow, sin gate"',
+          "shadow" in hch_section_src.lower() and "gate" not in hch_section_src.lower()
+          or "sin gate" in hch_section_src.lower())
+    check("sin `hch` (ticket previo a BOT-052.2), hchSection() no muestra nada -- nunca inventa un estado",
+          re.search(r"if\s*\(\s*!\s*hch\s*\)\s*return\s*\"\"", hch_section_src) is not None)
+
     print(f"\n{len(FAILURES)} failing checks" if FAILURES else "\nALL CHECKS PASS")
     if FAILURES:
         for f in FAILURES:
